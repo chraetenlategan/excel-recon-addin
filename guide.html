@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Reconcile — how to use it</title>
+  <style>
+    body { font-family: "Segoe UI", system-ui, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 20px; color: #201f1e; line-height: 1.55; }
+    h1 { color: #185c37; }
+    h2 { color: #217346; margin-top: 34px; border-bottom: 1px solid #e1dfdd; padding-bottom: 4px; }
+    h3 { margin-top: 22px; }
+    code { background: #f3f2f1; padding: 1px 5px; border-radius: 3px; font-size: 0.95em; }
+    a { color: #217346; }
+    ol, ul { padding-left: 22px; }
+    li { margin: 5px 0; }
+    .box { border: 1px solid #e1dfdd; border-radius: 6px; padding: 14px 18px; background: #fafafa; margin: 16px 0; }
+    .swatch { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: middle; margin-right: 6px; border: 1px solid #0002; }
+    .green { background: #C6EFCE; } .amber { background: #FFEB9C; } .red { background: #FFC7CE; }
+    table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+    th, td { border: 1px solid #e1dfdd; padding: 7px 10px; text-align: left; vertical-align: top; }
+    th { background: #f3f2f1; }
+    .muted { color: #605e5c; font-size: 13px; }
+    .nav a { margin-right: 14px; }
+  </style>
+</head>
+<body>
+  <h1>Reconcile — how to use it</h1>
+  <p class="nav muted">
+    <a href="index.html">Install page</a>
+    <a href="https://github.com/chraetenlategan/excel-recon-addin#readme">Technical README</a>
+  </p>
+  <p>Reconcile matches a <strong>cashbook</strong> against a <strong>bank statement</strong>
+     and/or a <strong>general ledger</strong> by <strong>amount + date</strong>, right inside
+     Excel. Everything runs on your own machine — no data leaves it.</p>
+
+  <div class="box">
+    <strong>One-time setup.</strong> Ask whoever set this up to install it for you (see the
+    <a href="index.html">install page</a>). Once installed, updates are automatic — you never
+    re-install. When it's in, you'll see a <strong>Reconcile</strong> button on the Excel
+    <strong>Home</strong> tab.
+  </div>
+
+  <h2>1. Lay out your data</h2>
+  <p>Put each dataset on its own worksheet (tab). Name them clearly — e.g.
+     <code>Cashbook</code>, <code>Bank Statement</code>, <code>Ledger</code>.</p>
+  <p>Each sheet needs a <strong>header row</strong> with these columns (any order — they're
+     detected automatically):</p>
+  <ul>
+    <li><strong>Date</strong></li>
+    <li><strong>Description</strong> (payee / reference / narrative)</li>
+    <li><strong>Amount</strong> — <em>or</em> a <strong>Debit</strong> column plus a
+        <strong>Credit</strong> column instead.</li>
+  </ul>
+  <p class="muted">Money-in is positive, money-out is negative. <code>(1,234.56)</code> and
+     <code>1,234.56-</code> both count as negative.</p>
+
+  <h2>2. Run a reconciliation</h2>
+  <ol>
+    <li><strong>Home ▸ Reconcile</strong> to open the panel on the right.</li>
+    <li>Pick which tab is the <strong>Cashbook</strong>, plus at least one of
+        <strong>Bank statement</strong> / <strong>General ledger</strong>.</li>
+    <li>Click <strong>Load &amp; detect columns</strong>.</li>
+    <li>Check the detected columns. Wrong guess? Change the drop-downs (Date / Description /
+        Amount, or switch to Debit + Credit). You can also set a <strong>month filter</strong>.</li>
+    <li>Click <strong>Reconcile</strong>.</li>
+  </ol>
+  <p>New sheets appear, named <code>Recon - …</code> (Comparison, Cashbook, Bank Statement,
+     Unmatched). Your original tabs are never changed.</p>
+
+  <h3>Reading the colours</h3>
+  <table>
+    <tr><th>Colour</th><th>Status</th><th>Means</th></tr>
+    <tr><td><span class="swatch green"></span>Green</td><td>Matched</td>
+        <td>Amount, date <em>and</em> description all line up.</td></tr>
+    <tr><td><span class="swatch amber"></span>Amber</td><td>Check description</td>
+        <td>Amount + date match, but the description doesn't — eyeball it.</td></tr>
+    <tr><td><span class="swatch red"></span>Red</td><td>Not found</td>
+        <td>No row with the same amount + date on the other side.</td></tr>
+  </table>
+  <p>The <strong>Recon - Unmatched</strong> sheet goes further: it <em>suggests</em> which
+     leftover rows probably belong together (including one payment that hit the bank as several
+     lines), then lists whatever it couldn't pair.</p>
+
+  <h2>3. Spot-check a single row with a formula</h2>
+  <p>To check one row without running a full reconcile, type a formula in a blank cell. Excel
+     will autocomplete the name as you type <code>=RECON.</code>:</p>
+  <div class="box">
+    <code>=RECON.COMPARETOBS(<em>amount</em>, <em>date</em>, <em>description</em>)</code>
+  </div>
+  <p>Example — in a cashbook row where amount is in <code>D2</code>, date in <code>B2</code>,
+     description in <code>C2</code>:</p>
+  <div class="box"><code>=RECON.COMPARETOBS(D2, B2, C2)</code></div>
+  <p>The cell shows <em>Matched to Bank Statement</em>, <em>Check description (Bank Statement)</em>,
+     or <em>Not found on Bank Statement</em>. Drag the fill handle down to check a whole column.</p>
+  <p>Three versions, one per target sheet:</p>
+  <table>
+    <tr><th>Formula</th><th>Checks against</th></tr>
+    <tr><td><code>=RECON.COMPARETOBS(…)</code></td><td>Bank statement</td></tr>
+    <tr><td><code>=RECON.COMPARETOGL(…)</code></td><td>General ledger</td></tr>
+    <tr><td><code>=RECON.COMPARETOCB(…)</code></td><td>Cashbook (use it from a statement/ledger row)</td></tr>
+  </table>
+  <p class="muted">Description is optional. If it picks the wrong target sheet, add the sheet name
+     as the last argument: <code>=RECON.COMPARETOBS(D2, B2, C2, "Bank Feb")</code>.</p>
+
+  <h2>Troubleshooting</h2>
+  <table>
+    <tr><th>Problem</th><th>Fix</th></tr>
+    <tr><td>No <strong>Reconcile</strong> button on the Home tab</td>
+        <td>The add-in isn't installed on this machine — see the install page, then restart Excel.</td></tr>
+    <tr><td>Detected the wrong columns</td>
+        <td>Change the drop-downs after <strong>Load &amp; detect</strong>, or give your columns
+            clearer headers (Date / Description / Amount).</td></tr>
+    <tr><td>Dates don't match though they look the same</td>
+        <td>Usually fine — it reads day/month/year in any order. If not, format both columns as real
+            dates (not text).</td></tr>
+    <tr><td><code>#NAME?</code> from a <code>=RECON.</code> formula</td>
+        <td>Add-in not loaded yet — open the Reconcile panel once, or restart Excel.</td></tr>
+    <tr><td>A formula says <em>No … sheet found</em></td>
+        <td>Pass the exact sheet name as the last argument, e.g.
+            <code>=RECON.COMPARETOBS(D2, B2, C2, "Statement")</code>.</td></tr>
+  </table>
+
+  <p class="muted" style="margin-top:28px">All matching runs locally in Excel. No data leaves your machine.</p>
+</body>
+</html>
