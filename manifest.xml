@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OfficeApp
+  xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+  xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
+  xsi:type="TaskPaneApp">
+
+  <!-- Unique add-in id. Keep this stable forever; changing it makes Excel
+       treat it as a different add-in. -->
+  <Id>11ef275f-d353-4b26-a17b-ce5047e9c2e1</Id>
+  <Version>1.0.0.0</Version>
+  <ProviderName>Chraeten Lategan</ProviderName>
+  <DefaultLocale>en-US</DefaultLocale>
+  <DisplayName DefaultValue="Reconcile" />
+  <Description DefaultValue="Match a cashbook against a bank statement and/or general ledger by amount + date, right inside Excel." />
+
+  <!-- All URLs point at GitHub Pages. Update every occurrence of the base URL
+       if you ever move the host; the id above stays the same. -->
+  <IconUrl DefaultValue="https://chraetenlategan.github.io/excel-recon-addin/assets/icon-32.png" />
+  <HighResolutionIconUrl DefaultValue="https://chraetenlategan.github.io/excel-recon-addin/assets/icon-80.png" />
+  <SupportUrl DefaultValue="https://github.com/chraetenlategan/excel-recon-addin" />
+
+  <!-- Excel only. -->
+  <Hosts>
+    <Host Name="Workbook" />
+  </Hosts>
+  <Requirements>
+    <Sets DefaultMinVersion="1.1">
+      <Set Name="ExcelApi" MinVersion="1.4" />
+    </Sets>
+  </Requirements>
+
+  <DefaultSettings>
+    <SourceLocation DefaultValue="https://chraetenlategan.github.io/excel-recon-addin/taskpane.html" />
+  </DefaultSettings>
+
+  <!-- Needs to read the workbook and write the results sheet. -->
+  <Permissions>ReadWriteDocument</Permissions>
+
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <Hosts>
+      <Host xsi:type="Workbook">
+        <DesktopFormFactor>
+          <GetStarted>
+            <Title resid="GetStarted.Title" />
+            <Description resid="GetStarted.Description" />
+            <LearnMoreUrl resid="GetStarted.LearnMoreUrl" />
+          </GetStarted>
+          <FunctionFile resid="Commands.Url" />
+          <ExtensionPoint xsi:type="PrimaryCommandSurface">
+            <OfficeTab id="TabHome">
+              <Group id="Recon.Group">
+                <Label resid="Group.Label" />
+                <Icon>
+                  <bt:Image size="16" resid="Icon.16" />
+                  <bt:Image size="32" resid="Icon.32" />
+                  <bt:Image size="80" resid="Icon.80" />
+                </Icon>
+                <Control xsi:type="Button" id="Recon.OpenPane">
+                  <Label resid="OpenPane.Label" />
+                  <Supertip>
+                    <Title resid="OpenPane.Label" />
+                    <Description resid="OpenPane.Tooltip" />
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Icon.16" />
+                    <bt:Image size="32" resid="Icon.32" />
+                    <bt:Image size="80" resid="Icon.80" />
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>ReconTaskpane</TaskpaneId>
+                    <SourceLocation resid="Taskpane.Url" />
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+
+    <Resources>
+      <bt:Images>
+        <bt:Image id="Icon.16" DefaultValue="https://chraetenlategan.github.io/excel-recon-addin/assets/icon-16.png" />
+        <bt:Image id="Icon.32" DefaultValue="https://chraetenlategan.github.io/excel-recon-addin/assets/icon-32.png" />
+        <bt:Image id="Icon.80" DefaultValue="https://chraetenlategan.github.io/excel-recon-addin/assets/icon-80.png" />
+      </bt:Images>
+      <bt:Urls>
+        <bt:Url id="Commands.Url" DefaultValue="https://chraetenlategan.github.io/excel-recon-addin/taskpane.html" />
+        <bt:Url id="Taskpane.Url" DefaultValue="https://chraetenlategan.github.io/excel-recon-addin/taskpane.html" />
+        <bt:Url id="GetStarted.LearnMoreUrl" DefaultValue="https://github.com/chraetenlategan/excel-recon-addin" />
+      </bt:Urls>
+      <bt:ShortStrings>
+        <bt:String id="GetStarted.Title" DefaultValue="Reconcile is ready" />
+        <bt:String id="Group.Label" DefaultValue="Reconcile" />
+        <bt:String id="OpenPane.Label" DefaultValue="Reconcile" />
+      </bt:ShortStrings>
+      <bt:LongStrings>
+        <bt:String id="GetStarted.Description" DefaultValue="On the Home tab, click Reconcile to open the pane, pick your sheets, and match." />
+        <bt:String id="OpenPane.Tooltip" DefaultValue="Open the reconciliation pane." />
+      </bt:LongStrings>
+    </Resources>
+  </VersionOverrides>
+</OfficeApp>

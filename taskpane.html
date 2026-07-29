@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Reconcile</title>
+  <link rel="stylesheet" href="taskpane.css" />
+  <!-- Office.js: required, must load from Microsoft's CDN -->
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Reconcile</h1>
+    <p class="sub">Amount + date matching, straight from your worksheets.</p>
+  </header>
+
+  <main>
+    <section class="pick">
+      <label>Cashbook <span class="req">required</span>
+        <select id="sel-cashbook"></select>
+      </label>
+      <label>Bank statement <span class="opt">optional</span>
+        <select id="sel-statement"></select>
+      </label>
+      <label>General ledger <span class="opt">optional</span>
+        <select id="sel-ledger"></select>
+      </label>
+      <button id="refresh-sheets" class="link">↻ Refresh sheet list</button>
+    </section>
+
+    <section class="opts">
+      <label class="check"><input type="checkbox" id="global-desc-strict" /> Strict descriptions</label>
+      <label class="check"><input type="checkbox" id="global-desc-ignore" /> Ignore descriptions</label>
+    </section>
+
+    <button id="reconcile" class="primary" disabled>Reconcile</button>
+    <p id="status" class="status"></p>
+
+    <section id="summary" class="summary hidden"></section>
+    <section id="mapping" class="mapping hidden"></section>
+  </main>
+
+  <footer>
+    <a href="https://github.com/chraetenlategan/excel-recon-addin" target="_blank" rel="noopener">About / help</a>
+  </footer>
+
+  <script src="utils.js"></script>
+  <script src="engine.js"></script>
+  <script src="taskpane.js"></script>
+</body>
+</html>
