@@ -39,8 +39,19 @@
   <Permissions>ReadWriteDocument</Permissions>
 
   <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <!-- Shared runtime: the task pane and the =RECON.* custom functions run in
+         one long-lived runtime (taskpane.html), so the functions can reuse the
+         column mapping the pane loaded. -->
+    <Requirements>
+      <bt:Sets DefaultMinVersion="1.1">
+        <bt:Set Name="SharedRuntime" MinVersion="1.1" />
+      </bt:Sets>
+    </Requirements>
     <Hosts>
       <Host xsi:type="Workbook">
+        <Runtimes>
+          <Runtime resid="Taskpane.Url" lifetime="long" />
+        </Runtimes>
         <DesktopFormFactor>
           <GetStarted>
             <Title resid="GetStarted.Title" />
@@ -76,6 +87,18 @@
               </Group>
             </OfficeTab>
           </ExtensionPoint>
+          <ExtensionPoint xsi:type="CustomFunctions">
+            <Script>
+              <SourceLocation resid="Taskpane.Url" />
+            </Script>
+            <Page>
+              <SourceLocation resid="Taskpane.Url" />
+            </Page>
+            <Metadata>
+              <SourceLocation resid="Functions.Metadata.Url" />
+            </Metadata>
+            <Namespace resid="Functions.Namespace" />
+          </ExtensionPoint>
         </DesktopFormFactor>
       </Host>
     </Hosts>
@@ -89,12 +112,14 @@
       <bt:Urls>
         <bt:Url id="Commands.Url" DefaultValue="https://chraetenlategan.github.io/excel-recon-addin/taskpane.html" />
         <bt:Url id="Taskpane.Url" DefaultValue="https://chraetenlategan.github.io/excel-recon-addin/taskpane.html" />
+        <bt:Url id="Functions.Metadata.Url" DefaultValue="https://chraetenlategan.github.io/excel-recon-addin/functions.json" />
         <bt:Url id="GetStarted.LearnMoreUrl" DefaultValue="https://github.com/chraetenlategan/excel-recon-addin" />
       </bt:Urls>
       <bt:ShortStrings>
         <bt:String id="GetStarted.Title" DefaultValue="Reconcile is ready" />
         <bt:String id="Group.Label" DefaultValue="Reconcile" />
         <bt:String id="OpenPane.Label" DefaultValue="Reconcile" />
+        <bt:String id="Functions.Namespace" DefaultValue="RECON" />
       </bt:ShortStrings>
       <bt:LongStrings>
         <bt:String id="GetStarted.Description" DefaultValue="On the Home tab, click Reconcile to open the pane, pick your sheets, and match." />

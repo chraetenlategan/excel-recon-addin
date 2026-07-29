@@ -13,7 +13,10 @@
  * Output sheets are prefixed so they never collide with the user's input sheets.
  */
 
-const RESULT_PREFIX = "Recon: ";
+// NB: Excel worksheet names forbid the characters  : \ / ? * [ ]  — so this
+// prefix must not contain a colon (an earlier "Recon: " made every add() throw
+// "The argument is invalid, missing or has an incorrect format.").
+const RESULT_PREFIX = "Recon - ";
 
 /* ---------- status text + colour helpers (from export.js) ---------- */
 

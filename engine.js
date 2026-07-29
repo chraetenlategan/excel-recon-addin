@@ -202,14 +202,17 @@ function _find_candidates(amount, date_keys, side) {
 // Description similarity, honouring the global "Ignore descriptions" and
 // "Strict Descriptions" toggles.
 function _desc_similar(sourceDescRaw, targetDescRaw, tail) {
-  const ignoreEl = document.getElementById("global-desc-ignore");
+  // `document` is absent in some runtimes (e.g. a headless custom-functions
+  // runtime); fall back to the default "neither toggle set" behaviour there.
+  const doc = (typeof document !== "undefined") ? document : null;
+  const ignoreEl = doc && doc.getElementById("global-desc-ignore");
   if (ignoreEl && ignoreEl.checked) return true;
 
   const targetDesc = targetDescRaw.trim().toLowerCase();
   const sourceDesc = sourceDescRaw.trim().toLowerCase();
   if (targetDesc === sourceDesc) return true;
 
-  const strictEl = document.getElementById("global-desc-strict");
+  const strictEl = doc && doc.getElementById("global-desc-strict");
   if (strictEl && strictEl.checked) return false;
 
   const digitWords = sourceDesc.split(/\s+/).filter(w => /\d/.test(w) && !/^\d{1,2}$/.test(w));
@@ -220,6 +223,16 @@ function _desc_similar(sourceDescRaw, targetDescRaw, tail) {
   if (!tail) return false;
   if (targetDesc.includes(tail)) return true;
   return tail.split(/\s+/).filter(w => w.length > 2).some(w => targetDesc.includes(w));
+}
+
+// One-shot match against `side` (no consumption) — used by the =RECON.COMPARETO…
+// custom functions. Returns [status, matchedRowNumbers].
+function _match_entry(amount, date_keys, tail, side, originalDesc = "") {
+  const candidates = _find_candidates(amount, date_keys, side);
+  if (candidates.length === 0) return ["Not found", []];
+  const described = candidates.filter(s => _desc_similar(originalDesc, s.description, tail));
+  const hits = described.length > 0 ? described : candidates;
+  return [described.length > 0 ? "Matched" : "Check description", hits.map(s => s.row)];
 }
 
 // Two-pass one-to-one matcher used by reconcile.

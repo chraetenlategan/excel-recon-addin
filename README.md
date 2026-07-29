@@ -21,13 +21,32 @@ Everything runs locally in Excel. **No data leaves your machine** — the hostin
    auto-detected.
 2. **Home ▸ Reconcile** to open the pane.
 3. Pick which sheet is the cashbook, and at least one of statement / ledger.
-4. Click **Reconcile**. Results land on a new `Recon Results` sheet, colour-coded:
+4. Click **Reconcile**. Results land on new `Recon - …` sheets, colour-coded:
    - 🟩 **Matched** — amount, date and description all line up.
    - 🟨 **Check description** — amount + date match but the description doesn't.
    - 🟥 **Not found** — no matching amount + date on the other side.
 5. The pane also shows the **detected columns** so you can sanity-check the
    mapping. If it guessed wrong, rename your headers (Date / Description /
    Amount, or Debit + Credit) and reconcile again.
+
+### In-cell formulas
+
+You can also check a single row without running a full reconcile, using three
+custom functions:
+
+```
+=RECON.COMPARETOBS(amount, date, [description], [sheetName])
+=RECON.COMPARETOCB(amount, date, [description], [sheetName])
+=RECON.COMPARETOGL(amount, date, [description], [sheetName])
+```
+
+Each returns that row's status against the target sheet — e.g.
+`=RECON.COMPARETOBS(D2, B2, C2)` in a cashbook row reports *Matched to Bank
+Statement*, *Check description (Bank Statement)*, or *Not found on Bank
+Statement*. The target sheet is auto-detected by name (bank/statement,
+cashbook, ledger); pass an explicit `sheetName` to override. If you've already
+run **Load & detect** in the pane, the formulas reuse that side's exact column
+mapping.
 
 ---
 
@@ -70,8 +89,10 @@ Upload custom apps**, using this same manifest. No code changes needed.
 |---|---|
 | `manifest.xml` | What you sideload. Points Excel at the hosted `taskpane.html`. |
 | `taskpane.html` / `.css` | The pane UI (loads Office.js from Microsoft's CDN). |
-| `taskpane.js` | **The only Excel-aware code** — reads sheets, calls the engine, writes results. |
+| `taskpane.js` | **The Excel-aware pane code** — reads sheets, calls the engine, writes results. |
+| `functions.js` / `functions.json` | The `=RECON.COMPARETO…` custom functions + their metadata. |
 | `engine.js` | Reconciliation engine, ported verbatim from the web app. |
+| `comparison.js` / `sheets.js` | Build the comparison / unmatched output sheet specs. |
 | `utils.js` | Value/date parsing helpers the engine needs. |
 | `assets/icon-*.png` | Ribbon icons. Regenerate with `python make_icons.py`. |
 | `index.html` | Plain landing page for the GitHub Pages root. |

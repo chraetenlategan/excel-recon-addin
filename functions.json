@@ -1,0 +1,47 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/office-js/custom-functions.schema.json",
+  "functions": [
+    {
+      "id": "COMPARETOBS",
+      "name": "COMPARETOBS",
+      "description": "Match this row's amount + date (and description) against the Bank Statement sheet. Returns the match status.",
+      "helpUrl": "https://github.com/chraetenlategan/excel-recon-addin",
+      "result": { "dimensionality": "scalar", "type": "string" },
+      "options": { "volatile": true },
+      "parameters": [
+        { "name": "amount", "description": "The amount to match.", "type": "any" },
+        { "name": "date", "description": "The date to match.", "type": "any" },
+        { "name": "description", "description": "The description text (optional).", "type": "any", "optional": true },
+        { "name": "sheetName", "description": "Target sheet name (optional; auto-detected if omitted).", "type": "string", "optional": true }
+      ]
+    },
+    {
+      "id": "COMPARETOCB",
+      "name": "COMPARETOCB",
+      "description": "Match this row's amount + date (and description) against the Cashbook sheet. Returns the match status.",
+      "helpUrl": "https://github.com/chraetenlategan/excel-recon-addin",
+      "result": { "dimensionality": "scalar", "type": "string" },
+      "options": { "volatile": true },
+      "parameters": [
+        { "name": "amount", "description": "The amount to match.", "type": "any" },
+        { "name": "date", "description": "The date to match.", "type": "any" },
+        { "name": "description", "description": "The description text (optional).", "type": "any", "optional": true },
+        { "name": "sheetName", "description": "Target sheet name (optional; auto-detected if omitted).", "type": "string", "optional": true }
+      ]
+    },
+    {
+      "id": "COMPARETOGL",
+      "name": "COMPARETOGL",
+      "description": "Match this row's amount + date (and description) against the General Ledger sheet. Returns the match status.",
+      "helpUrl": "https://github.com/chraetenlategan/excel-recon-addin",
+      "result": { "dimensionality": "scalar", "type": "string" },
+      "options": { "volatile": true },
+      "parameters": [
+        { "name": "amount", "description": "The amount to match.", "type": "any" },
+        { "name": "date", "description": "The date to match.", "type": "any" },
+        { "name": "description", "description": "The description text (optional).", "type": "any", "optional": true },
+        { "name": "sheetName", "description": "Target sheet name (optional; auto-detected if omitted).", "type": "string", "optional": true }
+      ]
+    }
+  ]
+}
