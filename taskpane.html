@@ -6,7 +6,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Reconcile</title>
   <link rel="stylesheet" href="taskpane.css" />
-  <!-- Office.js: required, must load from Microsoft's CDN -->
   <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
 </head>
 <body>
@@ -26,19 +25,27 @@
       <label>General ledger <span class="opt">optional</span>
         <select id="sel-ledger"></select>
       </label>
-      <button id="refresh-sheets" class="link">↻ Refresh sheet list</button>
+      <div class="row">
+        <button id="load-detect" class="primary">Load &amp; detect columns</button>
+        <button id="refresh-sheets" class="link">↻ Sheets</button>
+      </div>
     </section>
 
-    <section class="opts">
-      <label class="check"><input type="checkbox" id="global-desc-strict" /> Strict descriptions</label>
-      <label class="check"><input type="checkbox" id="global-desc-ignore" /> Ignore descriptions</label>
+    <section id="mapping-wrap" class="hidden">
+      <div id="map-cashbook" class="mapcard hidden"></div>
+      <div id="map-statement" class="mapcard hidden"></div>
+      <div id="map-ledger" class="mapcard hidden"></div>
+
+      <div class="opts">
+        <label class="check"><input type="checkbox" id="global-desc-strict" /> Strict descriptions</label>
+        <label class="check"><input type="checkbox" id="global-desc-ignore" /> Ignore descriptions</label>
+      </div>
+
+      <button id="reconcile" class="primary">Reconcile → write result sheets</button>
     </section>
 
-    <button id="reconcile" class="primary" disabled>Reconcile</button>
     <p id="status" class="status"></p>
-
     <section id="summary" class="summary hidden"></section>
-    <section id="mapping" class="mapping hidden"></section>
   </main>
 
   <footer>
@@ -47,6 +54,8 @@
 
   <script src="utils.js"></script>
   <script src="engine.js"></script>
+  <script src="comparison.js"></script>
+  <script src="sheets.js"></script>
   <script src="taskpane.js"></script>
 </body>
 </html>
