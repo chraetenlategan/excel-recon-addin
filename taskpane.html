@@ -6,46 +6,140 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Reconcile</title>
   <link rel="stylesheet" href="taskpane.css" />
+  <link rel="stylesheet" href="flex.css" />
   <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
 </head>
 <body>
   <header>
     <h1>Reconcile</h1>
     <p class="sub">Amount + date matching, straight from your worksheets.</p>
+    <!-- Two flows share this pane. `body.flex-mode` decides which <section>
+         is on screen (flex.css), so neither has to know the other exists. -->
+    <nav id="mode-switch" class="modes">
+      <button type="button" data-mode="classic" class="active">Classic</button>
+      <button type="button" data-mode="flex">Modular</button>
+    </nav>
   </header>
 
   <main>
-    <section class="pick">
-      <label>Cashbook <span class="req">required</span>
-        <select id="sel-cashbook"></select>
-      </label>
-      <label>Bank statement <span class="opt">optional</span>
-        <select id="sel-statement"></select>
-      </label>
-      <label>General ledger <span class="opt">optional</span>
-        <select id="sel-ledger"></select>
-      </label>
-      <div class="row">
-        <button id="load-detect" class="primary">Load &amp; detect columns</button>
-        <button id="refresh-sheets" class="link">↻ Sheets</button>
+    <!-- ======================= Classic: cashbook vs bank / ledger ======= -->
+    <div id="classic">
+      <section class="pick">
+        <label>Cashbook <span class="req">required</span>
+          <select id="sel-cashbook"></select>
+        </label>
+        <label>Bank statement <span class="opt">optional</span>
+          <select id="sel-statement"></select>
+        </label>
+        <label>General ledger <span class="opt">optional</span>
+          <select id="sel-ledger"></select>
+        </label>
+        <div class="row">
+          <button id="load-detect" class="primary">Load &amp; detect columns</button>
+          <button id="refresh-sheets" class="link">↻ Sheets</button>
+        </div>
+      </section>
+
+      <section id="mapping-wrap" class="hidden">
+        <div id="map-cashbook" class="mapcard hidden"></div>
+        <div id="map-statement" class="mapcard hidden"></div>
+        <div id="map-ledger" class="mapcard hidden"></div>
+
+        <div class="opts">
+          <label class="check"><input type="checkbox" id="global-desc-strict" /> Strict descriptions</label>
+          <label class="check"><input type="checkbox" id="global-desc-ignore" /> Ignore descriptions</label>
+        </div>
+
+        <button id="reconcile" class="primary">Reconcile → write result sheets</button>
+      </section>
+
+      <section id="summary" class="summary hidden"></section>
+    </div>
+
+    <!-- ============================ Modular Recon =======================
+         The format-free flow: any sheets, any columns. Three numbered steps —
+         say where each sheet's column names are, draw the comparisons on an
+         ERD canvas, read the result — plus a Data view per sheet showing the
+         values coloured by outcome. See flex-*.js.
+    ================================================================== -->
+    <div id="flex">
+      <nav id="flex-tabs" class="flex-tabs" role="tablist">
+        <button type="button" class="active" data-panel="flex-setup-panel" role="tab">1. Sheets</button>
+        <button type="button" data-panel="flex-model-panel" role="tab">2. Model</button>
+        <button type="button" id="flex-tab-results" class="hidden" data-panel="flex-results-panel" role="tab">3. Results</button>
+      </nav>
+
+      <div class="flex-toolbar">
+        <button type="button" id="flex-run" class="primary" disabled>Reconcile</button>
+        <button type="button" id="flex-write" class="primary ghost" disabled>Write sheets</button>
+        <div class="flex-colors-wrap">
+          <button type="button" id="flex-colors-btn" class="link">Colours</button>
+          <div id="flex-colors-menu" class="flex-colors-menu hidden">
+            <label><input type="color" data-status="matched"> Matched</label>
+            <label><input type="color" data-status="ambiguous"> Repeated value</label>
+            <label><input type="color" data-status="unmatched"> Not found</label>
+            <div class="flex-colors-sep"></div>
+            <label><input type="radio" name="flex-highlight" value="cell"> Colour the compared values</label>
+            <label><input type="radio" name="flex-highlight" value="row"> Colour the whole row</label>
+          </div>
+        </div>
       </div>
-    </section>
 
-    <section id="mapping-wrap" class="hidden">
-      <div id="map-cashbook" class="mapcard hidden"></div>
-      <div id="map-statement" class="mapcard hidden"></div>
-      <div id="map-ledger" class="mapcard hidden"></div>
-
-      <div class="opts">
-        <label class="check"><input type="checkbox" id="global-desc-strict" /> Strict descriptions</label>
-        <label class="check"><input type="checkbox" id="global-desc-ignore" /> Ignore descriptions</label>
+      <div id="flex-data-nav" class="flex-data-nav hidden">
+        <label>Data
+          <select id="flex-data-sheet"></select>
+        </label>
+        <button type="button" id="flex-data-open" class="link">Open</button>
       </div>
 
-      <button id="reconcile" class="primary">Reconcile → write result sheets</button>
-    </section>
+      <div id="flex-setup-panel" class="tab-panel">
+        <p class="hint">Click the row that holds each sheet's column names — that's all the tool needs to know
+          about your format. Untick anything you don't want to reconcile.</p>
+        <div class="row">
+          <button type="button" id="flex-load" class="primary">Load worksheets</button>
+          <button type="button" id="flex-to-model" class="link" disabled>Continue →</button>
+        </div>
+        <div id="flex-setup-body" class="flex-setup-body"></div>
+      </div>
+
+      <div id="flex-model-panel" class="tab-panel hidden">
+        <p class="hint">Drag from a column on one table to a column on another to compare them. Draw more than one
+          line between the same two tables and a row has to agree on all of them. Click a line to change how it's
+          compared.</p>
+        <div class="flex-canvas-tools">
+          <button type="button" id="flex-suggest" class="link">Suggest</button>
+          <button type="button" id="flex-clear-links" class="link">Clear</button>
+          <button type="button" id="flex-arrange" class="link">Arrange</button>
+          <button type="button" id="flex-zoom-out" class="link" aria-label="Zoom out">−</button>
+          <button type="button" id="flex-zoom-in" class="link" aria-label="Zoom in">+</button>
+          <button type="button" id="flex-fit" class="link">Fit</button>
+        </div>
+        <div id="flex-canvas" class="flex-canvas">
+          <div id="flex-world" class="flex-world">
+            <svg id="flex-wires" class="flex-wires" width="6000" height="4000"></svg>
+          </div>
+          <div id="flex-canvas-empty" class="flex-canvas-empty">
+            <p>Include at least two sheets on step 1 to draw a comparison.</p>
+          </div>
+        </div>
+        <aside id="flex-rail" class="flex-rail"></aside>
+      </div>
+
+      <div id="flex-results-panel" class="tab-panel hidden">
+        <p class="hint">One block per pair of sheets. Click a row number to open that sheet in the Data view.</p>
+        <div id="flex-results-body" class="flex-results-body"></div>
+      </div>
+
+      <div id="flex-data-panel" class="tab-panel hidden">
+        <h2 id="flex-data-title">Sheet</h2>
+        <p class="hint" id="flex-data-hint"></p>
+        <div class="grid-wrap">
+          <table class="flex-data-grid" id="flex-data-grid"><thead></thead><tbody></tbody></table>
+        </div>
+      </div>
+    </div>
 
     <p id="status" class="status"></p>
-    <section id="summary" class="summary hidden"></section>
   </main>
 
   <footer>
@@ -57,6 +151,12 @@
   <script src="comparison.js"></script>
   <script src="sheets.js"></script>
   <script src="functions.js"></script>
+  <!-- Modular Recon (the format-free flow) — model, engine, then its three steps -->
+  <script src="flex-model.js"></script>
+  <script src="flex-engine.js"></script>
+  <script src="flex-setup.js"></script>
+  <script src="flex-erd.js"></script>
+  <script src="flex-results.js"></script>
   <script src="taskpane.js"></script>
 </body>
 </html>

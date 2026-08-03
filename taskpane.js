@@ -28,6 +28,7 @@ Office.onReady((info) => {
   $("refresh-sheets").onclick = loadSheetList;
   $("load-detect").onclick = loadAndDetect;
   $("reconcile").onclick = reconcile;
+  initFlex();          // Modular Recon wires itself up (flex-setup.js)
   loadSheetList();
 });
 
@@ -45,7 +46,8 @@ async function loadSheetList() {
       const sheets = ctx.workbook.worksheets;
       sheets.load("items/name");
       await ctx.sync();
-      const names = sheets.items.map((s) => s.name).filter((n) => !n.startsWith(RESULT_PREFIX));
+      const names = sheets.items.map((s) => s.name)
+        .filter((n) => !n.startsWith(RESULT_PREFIX) && !n.startsWith(FLEX_PREFIX));
       const guess = (needles) => names.find((n) => needles.some((k) => n.toLowerCase().includes(k))) || "";
       fillSelect("sel-cashbook", names, false, guess(["cashbook", "cash book", "cash"]));
       fillSelect("sel-statement", names, true, guess(["bank", "statement"]));
@@ -135,13 +137,9 @@ function colOptions(columns, selected) {
   const none = `<option value=""${selected === null || selected === undefined ? " selected" : ""}>— none —</option>`;
   const opts = columns.map((c) => {
     const label = `${c.letter}${c.header ? " — " + c.header : ""}`;
-    return `<option value="${c.index}"${c.index === selected ? " selected" : ""}>${escapeHtmlLite(label)}</option>`;
+    return `<option value="${c.index}"${c.index === selected ? " selected" : ""}>${escapeHtml(label)}</option>`;
   });
   return none + opts.join("");
-}
-
-function escapeHtmlLite(t) {
-  return String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 }
 
 function renderMapping(side) {
@@ -153,7 +151,7 @@ function renderMapping(side) {
   const dc = m.mode === "debit_credit";
   const monthable = side === "cashbook" || side === "ledger";
 
-  let html = `<h3>${LABELS[side]} — sheet “${escapeHtmlLite(L.sheetName)}”</h3>`;
+  let html = `<h3>${LABELS[side]} — sheet “${escapeHtml(L.sheetName)}”</h3>`;
 
   html += `<div class="field grid2">
       <label style="margin:0"><span>Header row (0 = none)</span>
@@ -269,23 +267,34 @@ function supports(v) {
   try { return Office.context.requirements.isSetSupported("ExcelApi", v); } catch { return false; }
 }
 
-async function writeSpecs(ctx, specs) {
+/**
+ * Write a set of sheet specs into the workbook, replacing whatever the previous
+ * run of the same flow left behind. `prefix` says which sheets that is — the
+ * classic flow owns "Recon - …" and Modular Recon owns "Modular - …", so
+ * running one never eats the other's output.
+ */
+async function writeSpecs(ctx, specs, prefix = RESULT_PREFIX) {
   // Clear any previous result sheets so each run is clean.
   const all = ctx.workbook.worksheets;
   all.load("items/name");
   await ctx.sync();
   for (const ws of all.items) {
-    if (ws.name.startsWith(RESULT_PREFIX)) ws.delete();
+    if (ws.name.startsWith(prefix)) ws.delete();
   }
   await ctx.sync();
 
   for (const spec of specs) writeOne(ctx, spec);
   await ctx.sync();
 
-  const comp = ctx.workbook.worksheets.getItemOrNullObject(RESULT_PREFIX + "Comparison");
-  comp.load("name");
-  await ctx.sync();
-  if (!comp.isNullObject) comp.activate();
+  // Land the user on the sheet that reads as the answer: the side-by-side
+  // Comparison for the classic flow, otherwise whatever was written first.
+  const landing = specs.find((s) => s.name === prefix + "Comparison") || specs[0];
+  if (landing) {
+    const ws = ctx.workbook.worksheets.getItemOrNullObject(landing.name);
+    ws.load("name");
+    await ctx.sync();
+    if (!ws.isNullObject) ws.activate();
+  }
 }
 
 function writeOne(ctx, spec) {
@@ -332,6 +341,18 @@ function writeOne(ctx, spec) {
     if (color) run = { start: i, count: 1, color };
   }
   flush();
+
+  // Free-form coloured rectangles (Modular Recon paints individual compared
+  // cells, in colours the user picked, so it can't use the three-colour runs
+  // above). Each rect is already a maximal block — see flexFillRects.
+  for (const rect of spec.paintRects || []) {
+    if (rect.r0 >= nRows || rect.c0 >= width) continue;
+    const rows = Math.min(rect.rows, nRows - rect.r0);
+    const cols = Math.min(rect.cols, width - rect.c0);
+    const rng = ws.getRangeByIndexes(rect.r0, rect.c0, rows, cols);
+    rng.format.fill.color = "#" + rect.fill;
+    if (rect.font) rng.format.font.color = "#" + rect.font;
+  }
 
   // Navy header band(s).
   for (const r of spec.bandRows || []) {

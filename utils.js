@@ -173,3 +173,32 @@ function colLetter(index) {
   }
   return letters;
 }
+
+function escapeHtml(text) {
+  return String(text).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+
+/* ---------- Excel serial dates ---------- */
+
+// Office.js hands back a date cell as a serial number, which reads as an
+// ordinary number to every parser here. The cell's number format is the only
+// thing that says otherwise, so it is what decides.
+function isExcelDateFormat(format) {
+  if (!format) return false;
+  const f = String(format)
+    .replace(/\[[^\]]*\]/g, "")   // [Red], [$-409] and friends
+    .replace(/"[^"]*"/g, "")      // literal text inside the format
+    .toLowerCase();
+  if (!f || f === "general") return false;
+  return /y|d|mmm/.test(f);
+}
+
+// Excel serial -> a local-midnight Date. Day 0 is 1899-12-30 (Excel's 1900 leap
+// year bug included, which is why the epoch is the 30th and not the 31st).
+function excelSerialToDate(serial) {
+  const days = Math.floor(serial);
+  const ms = Math.round((serial - days) * 86400000);
+  const utc = new Date(Date.UTC(1899, 11, 30) + days * 86400000 + ms);
+  return new Date(utc.getUTCFullYear(), utc.getUTCMonth(), utc.getUTCDate(),
+    utc.getUTCHours(), utc.getUTCMinutes(), utc.getUTCSeconds());
+}
