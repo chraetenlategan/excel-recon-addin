@@ -24,10 +24,14 @@ const RESULT_PREFIX = "Recon - ";
 
 // The three outcome colours, as Excel's own "good / neutral / bad" pair of
 // fill + font so they read the same as the built-in cell styles.
+// Orange and blue are only used by colour-only mode, where all three sheets are
+// present and a cashbook row can be found on one side but not the other.
 const STATUS_FILL = {
-  green: { fill: "C6EFCE", font: "006100" },
-  amber: { fill: "FFEB9C", font: "9C6500" },
-  red:   { fill: "FFC7CE", font: "9C0006" },
+  green:  { fill: "C6EFCE", font: "006100" },
+  amber:  { fill: "FFEB9C", font: "9C6500" },
+  red:    { fill: "FFC7CE", font: "9C0006" },
+  orange: { fill: "F8CBAD", font: "833C0C" },
+  blue:   { fill: "BDD7EE", font: "1F4E79" },
 };
 
 function _statusColor(status) {

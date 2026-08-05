@@ -416,29 +416,39 @@ function paintCells(ws, rects, nRows, width) {
 const SHEET_ROWS = 1048576;
 const SHEET_COLS = 16384;
 
-// A cashbook row counts as found only if every side it was compared against
-// claimed it; "Check description" still means the amount itself was found.
-function foundOnAllSides(result, r) {
+// The colour a cashbook row gets. With both a statement and a ledger loaded the
+// two sides are told apart: green = found on both, blue = bank statement only,
+// orange = general ledger only, red = neither. With only one side loaded there
+// is nothing to tell apart, so it stays green/red.
+// "Check description" still means the amount itself was found.
+function cashbookColour(result, r) {
   const ok = (s) => s === "Matched" || s === "Check description";
-  if (result.hasStatement && !ok(r.status)) return false;
-  if (result.hasLedger && !ok(r.ledgerStatus)) return false;
-  return true;
+  const onSt = result.hasStatement ? ok(r.status) : null;
+  const onLd = result.hasLedger ? ok(r.ledgerStatus) : null;
+  if (onSt !== null && onLd !== null) {
+    if (onSt && onLd) return "green";
+    if (onSt) return "blue";
+    if (onLd) return "orange";
+    return "red";
+  }
+  return (onSt || onLd) ? "green" : "red";
 }
 
-// Per side: 1-based row number within that sheet's used range -> found?
+// Per side: 1-based row number within that sheet's used range -> colour.
 function colourOnlyPlan(result) {
   const plan = {};
   const withAmount = (rows) => rows.filter((r) => r.amount !== null);
-  plan.cashbook = new Map(withAmount(result.rows).map((r) => [r.row, foundOnAllSides(result, r)]));
-  if (result.hasStatement) plan.statement = new Map(withAmount(result.statement).map((s) => [s.row, s.matched]));
-  if (result.hasLedger) plan.ledger = new Map(withAmount(result.ledger).map((s) => [s.row, s.matched]));
+  const sideColour = (s) => (s.matched ? "green" : "red");
+  plan.cashbook = new Map(withAmount(result.rows).map((r) => [r.row, cashbookColour(result, r)]));
+  if (result.hasStatement) plan.statement = new Map(withAmount(result.statement).map((s) => [s.row, sideColour(s)]));
+  if (result.hasLedger) plan.ledger = new Map(withAmount(result.ledger).map((s) => [s.row, sideColour(s)]));
   return plan;
 }
 
 /**
  * Colour-only mode: no result sheets at all — just fill the amount cell of every
- * row on the user's own sheets, green where the amount was found on the other
- * side and red where it wasn't. Fills only; fonts and values stay untouched.
+ * row on the user's own sheets with the colour the plan gave it. Fills only;
+ * fonts and values stay untouched.
  */
 async function paintSourceSheets(ctx, result) {
   const plan = colourOnlyPlan(result);
@@ -446,20 +456,20 @@ async function paintSourceSheets(ctx, result) {
   let painted = 0;
 
   for (const side of SIDES) {
-    const found = plan[side];
+    const colours = plan[side];
     const src = sources[side];
     const L = loaded[side];
-    if (!found || !src || !L) continue;
+    if (!colours || !src || !L) continue;
     const cols = src.amountCols || [];
     if (!cols.length) continue;
 
     const paint = _painter();
-    for (const [rowNum, ok] of found) {
+    for (const [rowNum, colour] of colours) {
       const raw = src.rows[rowNum - 1] || [];
       // In debit/credit layout only the side that carries a figure is coloured.
       const filled = cols.filter((c) => String(raw[c] ?? "").trim() !== "");
       for (const c of (filled.length ? filled : cols)) {
-        paint.set(L.origin.row + rowNum - 1, L.origin.col + c, ok ? "green" : "red");
+        paint.set(L.origin.row + rowNum - 1, L.origin.col + c, colour);
       }
       painted++;
     }

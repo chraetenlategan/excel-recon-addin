@@ -16,6 +16,7 @@
     .box { border: 1px solid #e1dfdd; border-radius: 6px; padding: 14px 18px; background: #fafafa; margin: 16px 0; }
     .swatch { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: middle; margin-right: 6px; border: 1px solid #0002; }
     .green { background: #C6EFCE; } .amber { background: #FFEB9C; } .red { background: #FFC7CE; }
+    .orange { background: #F8CBAD; } .blue { background: #BDD7EE; }
     table { border-collapse: collapse; width: 100%; margin: 12px 0; }
     th, td { border: 1px solid #e1dfdd; padding: 7px 10px; text-align: left; vertical-align: top; }
     th { background: #f3f2f1; }
@@ -89,6 +90,16 @@
      cells on <em>your own</em> tabs are simply filled <span class="swatch green"></span>green if
      the amount was found on the other side and <span class="swatch red"></span>red if it wasn't.
      (There's no amber here — a description mismatch still counts as found.)</p>
+  <p>If you loaded <strong>all three</strong> sheets — cashbook, bank statement <em>and</em> general
+     ledger — the cashbook gets two extra colours, so you can see which side a row is missing from:</p>
+  <table>
+    <tr><td><span class="swatch green"></span>Green</td><td>found on both the bank statement and the general ledger</td></tr>
+    <tr><td><span class="swatch blue"></span>Blue</td><td>found on the bank statement only</td></tr>
+    <tr><td><span class="swatch orange"></span>Orange</td><td>found on the general ledger only</td></tr>
+    <tr><td><span class="swatch red"></span>Red</td><td>found on neither</td></tr>
+  </table>
+  <p class="muted">The bank statement and general ledger tabs themselves stay green/red — there is
+     only one side to compare them against. With just two sheets loaded everything is green/red.</p>
   <p class="muted"><strong>Clear colours</strong> underneath the Reconcile button strips those
      fills off the amount columns again.</p>
 
