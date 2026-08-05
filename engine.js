@@ -267,8 +267,7 @@ function _side_rows(side, matched_rows) {
       date: s.date,
       description: s.description,
       amount: s.amount,
-      matched: matched_rows.has(s.row),
-      statusLabel: matched_rows.has(s.row) ? "✓ Matched on cashbook" : "✗ Not on cashbook"
+      matched: matched_rows.has(s.row)
     }));
 }
 
@@ -341,17 +340,16 @@ function runLocalReconcile(cashbookRows, statementRows, cashbookMap, statementMa
     return counts;
   }
 
-  function label(status, target) {
-    if (status === "Matched") return `✓ Matched on ${target}`;
-    if (status === "Check description") return `⚠ Matched on ${target} - check description`;
-    if (status === "Not found") return `✗ Not on ${target}`;
-    if (status === "No amount") return `⚠ No amount`;
-    return "";
-  }
-
-  for (const r of results) {
-    r.statusLabel = label(r.status, "bank statement");
-    r.ledgerStatusLabel = label(r.ledgerStatus, "general ledger");
+  // Which column(s) hold the amount, so the writer knows which cells to colour.
+  function amountCols(map) {
+    const cols = [];
+    if (map.mode === "debit_credit") {
+      if (map.debit !== null && map.debit !== undefined) cols.push(map.debit);
+      if (map.credit !== null && map.credit !== undefined) cols.push(map.credit);
+    } else if (map.amount !== null && map.amount !== undefined) {
+      cols.push(map.amount);
+    }
+    return cols;
   }
 
   const stRowsOut = _side_rows(statement, matchedStatement);
@@ -368,9 +366,13 @@ function runLocalReconcile(cashbookRows, statementRows, cashbookMap, statementMa
     unmatchedStatementCount: stRowsOut.filter(s => !s.matched).length,
     unmatchedLedgerCount: ldRowsOut.filter(s => !s.matched).length,
     sources: {
-      cashbook: { rows: cashbookRows, headerRow: cashbookMap.headerRow || 0 },
-      statement: hasStatement ? { rows: statementRows, headerRow: statementMap.headerRow || 0 } : null,
-      ledger: hasLedger ? { rows: ledgerRows, headerRow: ledgerMap.headerRow || 0 } : null
+      cashbook: { rows: cashbookRows, headerRow: cashbookMap.headerRow || 0, amountCols: amountCols(cashbookMap) },
+      statement: hasStatement
+        ? { rows: statementRows, headerRow: statementMap.headerRow || 0, amountCols: amountCols(statementMap) }
+        : null,
+      ledger: hasLedger
+        ? { rows: ledgerRows, headerRow: ledgerMap.headerRow || 0, amountCols: amountCols(ledgerMap) }
+        : null
     }
   };
 }

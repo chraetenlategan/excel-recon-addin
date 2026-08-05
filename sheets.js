@@ -2,13 +2,17 @@
 
 /**
  * sheets.js — turn a reconcile result into "sheet specs": plain descriptions of
- * each output worksheet (values + which rows to colour). Ported from the web
+ * each output worksheet (values + which cells to colour). Ported from the web
  * app's export.js, but where export.js built SheetJS worksheets, this returns
  * data that taskpane.js writes into the live workbook via Office.js.
  *
- * A spec: { name, aoa, colWidths, bandRows[], titleRows[], rowFills{idx:color},
+ * The outcome is carried by colour, not words: the amount cell of every row is
+ * filled green (matched), amber (matched, description differs) or red (not
+ * found / no amount). The only text added to a source sheet is the row number
+ * the match was found on.
+ *
+ * A spec: { name, aoa, colWidths, bandRows[], titleRows[], paintRects[],
  *           autofilter:{headerRow,width,lastRow}|null }
- * color is "green" | "amber" | "red".
  *
  * Output sheets are prefixed so they never collide with the user's input sheets.
  */
@@ -18,27 +22,18 @@
 // "The argument is invalid, missing or has an incorrect format.").
 const RESULT_PREFIX = "Recon - ";
 
-/* ---------- status text + colour helpers (from export.js) ---------- */
-
-function _plainStatus(status, target) {
-  if (status === "Matched") return `Matched on ${target}`;
-  if (status === "Check description") return `Matched on ${target} - check description`;
-  if (status === "Not found") return `Not matched on ${target}`;
-  if (status === "No amount") return "No amount";
-  return "";
-}
+// The three outcome colours, as Excel's own "good / neutral / bad" pair of
+// fill + font so they read the same as the built-in cell styles.
+const STATUS_FILL = {
+  green: { fill: "C6EFCE", font: "006100" },
+  amber: { fill: "FFEB9C", font: "9C6500" },
+  red:   { fill: "FFC7CE", font: "9C0006" },
+};
 
 function _statusColor(status) {
   if (status === "Matched") return "green";
   if (status === "Check description") return "amber";
   if (status === "Not found" || status === "No amount") return "red";
-  return null;
-}
-
-function _classColor(cls) {
-  if (cls === "status-matched") return "green";
-  if (cls === "status-check") return "amber";
-  if (cls === "status-missing" || cls === "status-noamount") return "red";
   return null;
 }
 
@@ -50,7 +45,46 @@ function _combineColors(colors) {
   return "amber";
 }
 
+/**
+ * Collects coloured cells and hands back rectangles. Consecutive cells of one
+ * colour in the same column merge into a single rectangle, so colouring a long
+ * sheet costs a handful of Office.js range operations rather than thousands.
+ */
+function _painter() {
+  const byCol = new Map();  // column index -> Map(row index -> colour)
+  return {
+    set(r, c, color) {
+      if (!color || c === undefined || c === null || c < 0) return;
+      if (!byCol.has(c)) byCol.set(c, new Map());
+      byCol.get(c).set(r, color);
+    },
+    rects() {
+      const out = [];
+      for (const [c, rows] of byCol) {
+        let run = null;
+        const flush = () => {
+          if (run) out.push({
+            r0: run.r0, c0: c, rows: run.n, cols: 1,
+            fill: STATUS_FILL[run.color].fill, font: STATUS_FILL[run.color].font,
+          });
+          run = null;
+        };
+        for (const r of [...rows.keys()].sort((a, b) => a - b)) {
+          const color = rows.get(r);
+          if (run && run.color === color && run.r0 + run.n === r) { run.n++; continue; }
+          flush();
+          run = { r0: r, n: 1, color };
+        }
+        flush();
+      }
+      return out;
+    },
+  };
+}
+
 // Drop columns that hold nothing but auto-added "=compareTo..." helper formulas.
+// Returns the trimmed rows plus old-column-index -> new-column-index, since the
+// amount columns to colour are recorded against the untrimmed sheet.
 function _withoutFormulaColumns(rows) {
   let width = 0;
   for (const r of rows) width = Math.max(width, r.length);
@@ -65,38 +99,59 @@ function _withoutFormulaColumns(rows) {
     }
     if (!(hasContent && onlyFormulas)) keep.push(c);
   }
-  return rows.map(r => keep.map(c => (r[c] !== undefined && r[c] !== null) ? r[c] : ""));
+  const index = new Map(keep.map((c, i) => [c, i]));
+  return {
+    rows: rows.map(r => keep.map(c => (r[c] !== undefined && r[c] !== null) ? r[c] : "")),
+    index,
+  };
 }
 
-/* ---------- per-file sheet (uploaded rows + appended statuses) ---------- */
+/* ---------- per-file sheet (source rows, amounts coloured) ---------- */
 
-function _appendStatusSpec(name, source, statusHeaders, statusForRow, colorForRow) {
-  const data = _withoutFormulaColumns(source.rows);
+/**
+ * A copy of one source sheet with the matched row number(s) appended per side,
+ * its amount cell(s) coloured by outcome and each reference cell coloured by
+ * that side's own outcome.
+ *
+ *  refHeaders   short column titles, one per side ("BS", "GL", "CB")
+ *  refsForRow   1-based sheet row -> array of cell values, one per side
+ *  colorsForRow 1-based sheet row -> array of colours, one per side
+ */
+function _sideSpec(name, source, refHeaders, refsForRow, colorsForRow) {
+  const { rows: data, index } = _withoutFormulaColumns(source.rows);
   let width = 0;
   for (const r of data) width = Math.max(width, r.length);
 
-  const rowFills = {};
+  const amountCols = (source.amountCols || [])
+    .map(c => index.get(c))
+    .filter(c => c !== undefined);
+
+  const paint = _painter();
   const aoa = data.map((r, i) => {
     const row = [];
     for (let c = 0; c < width; c++) row.push(r[c] !== undefined ? r[c] : "");
     if (source.headerRow && i + 1 === source.headerRow) {
-      row.push(...statusHeaders);
-    } else {
-      row.push(...statusForRow(i + 1));
-      const color = colorForRow ? colorForRow(i + 1) : null;
-      if (color) rowFills[i] = color;
+      row.push(...refHeaders);
+      return row;
     }
+    row.push(...refsForRow(i + 1));
+    const colors = colorsForRow(i + 1);
+    for (const c of amountCols) paint.set(i, c, _combineColors(colors));
+    colors.forEach((color, k) => paint.set(i, width + k, color));
     return row;
   });
 
-  const totalWidth = width + statusHeaders.length;
-  const colWidths = Array.from({ length: width }, () => 16).concat(statusHeaders.map(() => 30));
+  const totalWidth = width + refHeaders.length;
+  const colWidths = Array.from({ length: width }, () => 16).concat(refHeaders.map(() => 10));
   const bandRows = source.headerRow ? [source.headerRow - 1] : [];
   const autofilter = source.headerRow
     ? { headerRow: source.headerRow - 1, width: totalWidth, lastRow: aoa.length - 1 }
     : null;
 
-  return { name: RESULT_PREFIX + name, aoa, colWidths, bandRows, titleRows: [], rowFills, autofilter };
+  return {
+    name: RESULT_PREFIX + name, aoa, colWidths, bandRows,
+    titleRows: [], paintRects: paint.rects(), autofilter,
+  };
 }
 
 /* ---------- top-level: build every output sheet ---------- */
@@ -117,14 +172,9 @@ function buildResultSheets(result) {
         cbRefs.get(n).push(r.row);
       }
     }
-    return _appendStatusSpec(name, source, ["Cashbook Status", "Cashbook Rows"], (rowNum) => {
-      if (!matchedBy.has(rowNum)) return ["", ""];
-      return [matchedBy.get(rowNum) ? "Matched on cashbook" : "Not matched on cashbook",
-              (cbRefs.get(rowNum) || []).join(", ")];
-    }, (rowNum) => {
-      if (!matchedBy.has(rowNum)) return null;
-      return matchedBy.get(rowNum) ? "green" : "red";
-    });
+    return _sideSpec(name, source, ["CB"],
+      (rowNum) => [matchedBy.has(rowNum) ? (cbRefs.get(rowNum) || []).join(", ") : ""],
+      (rowNum) => [matchedBy.has(rowNum) ? (matchedBy.get(rowNum) ? "green" : "red") : null]);
   };
 
   if (hasStatement && sources.statement) {
@@ -134,23 +184,20 @@ function buildResultSheets(result) {
   if (sources.cashbook) {
     const byRow = new Map(result.rows.map(r => [r.row, r]));
     const cbHeaders = [];
-    if (hasStatement) cbHeaders.push("Bank Statement Status", "Statement Rows");
-    if (hasLedger) cbHeaders.push("General Ledger Status", "Ledger Rows");
-    specs.push(_appendStatusSpec("Cashbook", sources.cashbook, cbHeaders, (rowNum) => {
+    if (hasStatement) cbHeaders.push("BS");
+    if (hasLedger) cbHeaders.push("GL");
+    specs.push(_sideSpec("Cashbook", sources.cashbook, cbHeaders, (rowNum) => {
       const r = byRow.get(rowNum);
       const out = [];
-      if (hasStatement) out.push(r ? _plainStatus(r.status, "bank statement") : "",
-                                 r ? r.matchedStatementRows.join(", ") : "");
-      if (hasLedger) out.push(r ? _plainStatus(r.ledgerStatus, "general ledger") : "",
-                              r ? r.matchedLedgerRows.join(", ") : "");
+      if (hasStatement) out.push(r ? r.matchedStatementRows.join(", ") : "");
+      if (hasLedger) out.push(r ? r.matchedLedgerRows.join(", ") : "");
       return out;
     }, (rowNum) => {
       const r = byRow.get(rowNum);
-      if (!r) return null;
-      const cs = [];
-      if (hasStatement) cs.push(_statusColor(r.status));
-      if (hasLedger) cs.push(_statusColor(r.ledgerStatus));
-      return _combineColors(cs);
+      const out = [];
+      if (hasStatement) out.push(r ? _statusColor(r.status) : null);
+      if (hasLedger) out.push(r ? _statusColor(r.ledgerStatus) : null);
+      return out;
     }));
   }
 
@@ -159,30 +206,41 @@ function buildResultSheets(result) {
   }
 
   // --- Comparison: cashbook / statement (/ ledger) rows side by side ---
-  const compHeaders = ["CB Row", "CB Date", "CB Description", "CB Amount"];
-  if (hasStatement) compHeaders.push("BS Row", "BS Date", "BS Description", "BS Amount", "Status");
-  if (hasLedger) compHeaders.push("GL Row", "GL Date", "GL Description", "GL Amount", "GL Status");
+  const compHeaders = ["CB Row", "Date", "Description", "Amount"];
+  if (hasStatement) compHeaders.push("BS Row", "Date", "Description", "Amount");
+  if (hasLedger) compHeaders.push("GL Row", "Date", "Description", "Amount");
+  const stAmountCol = 7;                            // 4 cashbook columns + 3
+  const ldAmountCol = hasStatement ? 11 : 7;
   const compAoa = [compHeaders];
-  const compFills = {};
+  const compPaint = _painter();
   let compIdx = 1;
   for (const c of buildComparisonRows(result)) {
     const sideVals = (s) => s ? [s.row, s.date, s.description, s.amount] : ["", "", "", ""];
     const row = [...sideVals(c.cb)];
-    const cs = [];
-    if (hasStatement) { row.push(...sideVals(c.st), c.stStatusLabel); cs.push(_classColor(c.stStatusClass)); }
-    if (hasLedger) { row.push(...sideVals(c.ld), c.ldStatusLabel); cs.push(_classColor(c.ldStatusClass)); }
+    const colors = [];
+    if (hasStatement) {
+      row.push(...sideVals(c.st));
+      const color = _statusColor(c.stStatus);
+      colors.push(color);
+      if (c.st) compPaint.set(compIdx, stAmountCol, color);
+    }
+    if (hasLedger) {
+      row.push(...sideVals(c.ld));
+      const color = _statusColor(c.ldStatus);
+      colors.push(color);
+      if (c.ld) compPaint.set(compIdx, ldAmountCol, color);
+    }
     compAoa.push(row);
-    const color = _combineColors(cs);
-    if (color) compFills[compIdx] = color;
+    if (c.cb) compPaint.set(compIdx, 3, _combineColors(colors));
     compIdx++;
   }
   const sideCols = () => [8, 12, 40, 12];
   const compCols = sideCols();
-  if (hasStatement) compCols.push(...sideCols(), 28);
-  if (hasLedger) compCols.push(...sideCols(), 28);
+  if (hasStatement) compCols.push(...sideCols());
+  if (hasLedger) compCols.push(...sideCols());
   specs.push({
     name: RESULT_PREFIX + "Comparison", aoa: compAoa, colWidths: compCols,
-    bandRows: [0], titleRows: [], rowFills: compFills,
+    bandRows: [0], titleRows: [], paintRects: compPaint.rects(),
     autofilter: { headerRow: 0, width: compHeaders.length, lastRow: compAoa.length - 1 }
   });
 
@@ -195,7 +253,7 @@ function buildResultSheets(result) {
   specs.push({
     name: RESULT_PREFIX + "Unmatched", aoa: unmatchedAoa,
     colWidths: [...sideCols(), ...sideCols(), 60, 12],
-    bandRows: [1], titleRows, rowFills: {}, autofilter: null
+    bandRows: [1], titleRows, paintRects: [], autofilter: null
   });
 
   return specs;

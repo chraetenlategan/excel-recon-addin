@@ -12,15 +12,6 @@
  *  - unmatchedComparisonSheetRows(result): the whole Unmatched sheet as an aoa.
  */
 
-// Reconcile status -> a class token, kept only so the ported _classColor logic
-// in sheets.js reads identically to the web app's export.js.
-const STATUS_CLASS = {
-  "Matched": "status-matched",
-  "Check description": "status-check",
-  "Not found": "status-missing",
-  "No amount": "status-noamount",
-};
-
 /* ---------- comparison (results.js) ---------- */
 
 // Align each cashbook row with its matched statement/ledger row, then append
@@ -36,28 +27,17 @@ function buildComparisonRows(result) {
     const ld = r.matchedLedgerRows.map(n => ldByRow.get(n)).find(Boolean) || null;
     if (st) shownSt.add(st.row);
     if (ld) shownLd.add(ld.row);
-    out.push({
-      cb: r, st, ld,
-      stStatusLabel: r.statusLabel, stStatusClass: STATUS_CLASS[r.status] || "",
-      ldStatusLabel: r.ledgerStatusLabel, ldStatusClass: STATUS_CLASS[r.ledgerStatus] || ""
-    });
+    out.push({ cb: r, st, ld, stStatus: r.status, ldStatus: r.ledgerStatus });
   }
+  // Side rows nothing on the cashbook claimed: shown on their own, unmatched.
   for (const s of result.statement) {
     if (!s.matched && !shownSt.has(s.row)) {
-      out.push({
-        cb: null, st: s, ld: null,
-        stStatusLabel: "✗ Not on cashbook", stStatusClass: "status-missing",
-        ldStatusLabel: "", ldStatusClass: ""
-      });
+      out.push({ cb: null, st: s, ld: null, stStatus: "Not found", ldStatus: "" });
     }
   }
   for (const l of result.ledger) {
     if (!l.matched && !shownLd.has(l.row)) {
-      out.push({
-        cb: null, st: null, ld: l,
-        stStatusLabel: "", stStatusClass: "",
-        ldStatusLabel: "✗ Not on cashbook", ldStatusClass: "status-missing"
-      });
+      out.push({ cb: null, st: null, ld: l, stStatus: "", ldStatus: "Not found" });
     }
   }
   return out;
@@ -308,10 +288,9 @@ function unmatchedComparisonSheetRows(result) {
   const side = (entry) => (entry ? [entry.row, entry.date, entry.description, entry.amount] : blank);
 
   const aoa = [];
-  aoa.push([`Unmatched rows — ${data.left.length} ${data.leftLabel.toLowerCase()}, ` +
-            `${data.right.length} ${data.rightLabel.toLowerCase()}`]);
-  aoa.push([`${data.leftPrefix} Row`, `${data.leftPrefix} Date`, `${data.leftPrefix} Description`, `${data.leftPrefix} Amount`,
-            `${data.rightPrefix} Row`, `${data.rightPrefix} Date`, `${data.rightPrefix} Description`, `${data.rightPrefix} Amount`,
+  aoa.push([`Unmatched — ${data.left.length} ${data.leftPrefix}, ${data.right.length} ${data.rightPrefix}`]);
+  aoa.push([`${data.leftPrefix} Row`, "Date", "Description", "Amount",
+            `${data.rightPrefix} Row`, "Date", "Description", "Amount",
             "Correlation"]);
 
   const listLength = Math.max(data.left.length, data.right.length);
@@ -325,8 +304,7 @@ function unmatchedComparisonSheetRows(result) {
   }
 
   aoa.push([]);
-  aoa.push([`Possible correlations — ${data.groups.length} group(s); duplicates of the rows above,` +
-            ` paired on amount, then date, then description`]);
+  aoa.push([`Possible correlations — ${data.groups.length} group(s), paired on amount, date, description`]);
   for (const g of data.groups) {
     const lines = _groupLines(g);
     for (let i = 0; i < lines; i++) {
@@ -341,7 +319,7 @@ function unmatchedComparisonSheetRows(result) {
   aoa.push([]);
   const sheets = uncorrelatedBySheet(result, data);
   const totalUncorrelated = sheets.reduce((n, s) => n + s.rows.length, 0);
-  aoa.push([`Found no correlations — ${totalUncorrelated} row(s) with no suggested match, listed per sheet`]);
+  aoa.push([`No correlation — ${totalUncorrelated} row(s)`]);
   for (const sheet of sheets) {
     aoa.push([`${sheet.label} — ${sheet.rows.length} row(s)`]);
     for (const entry of sheet.rows) aoa.push(side(entry));

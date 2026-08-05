@@ -9,7 +9,7 @@
   <!-- Unique add-in id. Keep this stable forever; changing it makes Excel
        treat it as a different add-in. -->
   <Id>11ef275f-d353-4b26-a17b-ce5047e9c2e1</Id>
-  <Version>1.0.0.0</Version>
+  <Version>1.1.0.0</Version>
   <ProviderName>Chraeten Lategan</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="Reconcile" />

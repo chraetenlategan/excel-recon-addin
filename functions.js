@@ -7,12 +7,13 @@
  *   =RECON.COMPARETOGL(amount, date, [description], [sheetName])
  *
  * Each takes the current row's amount + date (and, optionally, description) and
- * returns that row's match status against the chosen target sheet, using the
- * same non-consuming rule as the web app's in-cell "=compareTo…" formulas
+ * returns "✓" (matched), "⚠" (matched but the description differs, or no
+ * amount) or "✗" (not found) against the chosen target sheet, using the same
+ * non-consuming rule as the web app's in-cell "=compareTo…" formulas
  * (engine.js `_match_entry`).
  *
  * These run in the add-in's SHARED runtime (see manifest.xml), so:
- *   - if you've clicked "Load & detect" in the pane, the function reuses that
+ *   - if you've clicked "Load" in the pane, the function reuses that
  *     side's exact column mapping and rows;
  *   - otherwise it reads the target sheet live and auto-detects columns.
  *
@@ -81,21 +82,27 @@ async function _cfPreparedSide(which, sheetNameArg) {
   });
 }
 
+// A one-character outcome, so a column of these reads at a glance and takes
+// the same conditional formatting as the coloured result sheets.
+const MARK = {
+  "Matched": "✓",
+  "Check description": "⚠",
+  "Not found": "✗",
+  "No amount": "⚠",
+};
+
 async function _compareTo(which, amount, date, description, sheetName) {
   const amt = _amount(amount);
   const hasDate = date !== null && date !== undefined && String(date).trim() !== "";
   if (amt === null && !hasDate) return "";
-  if (amt === null) return "No amount";
+  if (amt === null) return MARK["No amount"];
 
-  const { side, label } = await _cfPreparedSide(which, sheetName);
+  const { side } = await _cfPreparedSide(which, sheetName);
   const desc = _text(description);
   const keys = _date_keys(date);
   const tail = _description_tail(desc).toLowerCase();
   const [status] = _match_entry(amt, keys, tail, side, desc);
-
-  if (status === "Matched") return `Matched to ${label}`;
-  if (status === "Check description") return `Check description (${label})`;
-  return `Not found on ${label}`;
+  return MARK[status] || MARK["Not found"];
 }
 
 // Thin per-target wrappers (Excel associates by id, below).

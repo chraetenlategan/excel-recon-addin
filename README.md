@@ -6,19 +6,15 @@ other, right inside the workbook. It reuses the matching engines from the
 web app, unchanged — the only new code is the Office.js glue that reads your
 worksheets and writes the result sheets.
 
-Two flows share the pane, switched at the top:
-
-| Mode | What it does |
-|---|---|
-| **Classic** | Cashbook vs bank statement and/or general ledger, matched by **amount + date**. Knows what a cashbook is. |
-| **Modular** | *Any* sheets, *any* columns. You draw the comparison — "this column equals that column" — and it reconciles on that composite key. Knows nothing about accounting. |
+It does one job: **cashbook vs bank statement and/or general ledger**, matched
+by **amount + date**.
 
 Everything runs locally in Excel. **No data leaves your machine** — the hosting
 (GitHub Pages) only serves the add-in's code, never your numbers.
 
 ---
 
-## Using it — Classic
+## Using it
 
 1. Put each dataset on its own worksheet — e.g. tabs named `Cashbook`,
    `Bank Statement`, and (optionally) `Ledger`. Each just needs a header row
@@ -27,10 +23,14 @@ Everything runs locally in Excel. **No data leaves your machine** — the hostin
    auto-detected.
 2. **Home ▸ Reconcile** to open the pane.
 3. Pick which sheet is the cashbook, and at least one of statement / ledger.
-4. Click **Reconcile**. Results land on new `Recon - …` sheets, colour-coded:
-   - 🟩 **Matched** — amount, date and description all line up.
-   - 🟨 **Check description** — amount + date match but the description doesn't.
-   - 🟥 **Not found** — no matching amount + date on the other side.
+4. Click **Reconcile**. Results land on new `Recon - …` sheets. The outcome is
+   carried by **colour on the amount cell**, not by status text:
+   - 🟩 amount, date and description all line up.
+   - 🟨 amount + date match but the description doesn't.
+   - 🟥 no matching amount + date on the other side.
+
+   The only text added to a copied sheet is the row number the match was found
+   on, under a short `BS` / `GL` / `CB` column.
 5. The pane also shows the **detected columns** so you can sanity-check the
    mapping. If it guessed wrong, rename your headers (Date / Description /
    Amount, or Debit + Credit) and reconcile again.
@@ -46,58 +46,12 @@ custom functions:
 =RECON.COMPARETOGL(amount, date, [description], [sheetName])
 ```
 
-Each returns that row's status against the target sheet — e.g.
-`=RECON.COMPARETOBS(D2, B2, C2)` in a cashbook row reports *Matched to Bank
-Statement*, *Check description (Bank Statement)*, or *Not found on Bank
-Statement*. The target sheet is auto-detected by name (bank/statement,
-cashbook, ledger); pass an explicit `sheetName` to override. If you've already
-run **Load & detect** in the pane, the formulas reuse that side's exact column
-mapping.
-
----
-
-## Using it — Modular Recon
-
-The format-free flow. The classic engine needs a Date, a Description and an
-Amount; this one asks you to describe the comparison instead, so it will
-reconcile a stock count against a delivery note as happily as a cashbook against
-a bank feed.
-
-1. Switch the pane to **Modular**.
-2. **Sheets** — **Load worksheets** pulls in every tab of the workbook. For each,
-   click the row holding its **column names** (guessed on load), and untick the
-   sheets that aren't part of the job.
-3. **Model** — every included sheet is an entity box, every column an attribute.
-   Drag from a column on one box to a column on another: that line *is* the
-   instruction "compare these two". Several lines between the same two sheets
-   build a composite key — a row matches only when **all** of them agree. Click a
-   line to change how it's compared (text / number / date / digits only, plus
-   options like ignoring sign or punctuation) or to remove it. **Suggest** links
-   columns that share a name; the pickers under the canvas add the same links
-   without dragging, which is easier in a narrow pane.
-4. **Results** — **Reconcile** gives a block per pair of sheets: pairs matched,
-   and every row that didn't. Click a row number to open that sheet in the Data
-   view, where the compared values are painted by outcome; a row number there
-   selects the real row in Excel. **Write sheets** puts the lot into the workbook
-   as `Modular - …` tabs with the same colouring, plus a `Modular - Summary`.
-
-Statuses are deliberately four, not two:
-
-| Status | Means |
-|---|---|
-| **Matched** | Exactly one row on the other side carries the same linked values. |
-| **Matched (repeated value)** | It matched, but that key occurs more than once — the counts are right, which row paired with which is arbitrary. |
-| **Not found** | Nothing on the other side carries those values. |
-| **No value** | A linked column was blank or unreadable, so the row was never compared. Two blanks never match. |
-
-Values are compared **exactly, once normalised** — dates to a canonical
-`YYYYMMDD`, numbers to a chosen number of decimals, text lower-cased. Nothing is
-matched approximately, which is what lets 30 rows against 29 mean precisely one
-missing row rather than a similarity score.
-
-> A date column's day/month order is settled once for the whole column, so a
-> sheet that mixes `07/17/2024` with `15/07/2024` will read some rows wrong.
-> Format the column as real dates in Excel and reload the worksheets.
+Each returns a single mark against the target sheet — `✓` matched, `⚠` matched
+but the description differs (or no amount), `✗` not found — so a filled-down
+column reads at a glance and takes ordinary conditional formatting. The target
+sheet is auto-detected by name (bank/statement, cashbook, ledger); pass an
+explicit `sheetName` to override. If you've already clicked **Load** in the
+pane, the formulas reuse that side's exact column mapping.
 
 ---
 
@@ -140,45 +94,29 @@ Upload custom apps**, using this same manifest. No code changes needed.
 |---|---|
 | `manifest.xml` | What you sideload. Points Excel at the hosted `taskpane.html`. |
 | `taskpane.html` / `.css` | The pane UI (loads Office.js from Microsoft's CDN). |
-| `taskpane.js` | **The Excel-aware pane code** — reads sheets, calls the engine, writes results. Owns `writeSpecs`, the Office.js sheet writer both flows use. |
+| `taskpane.js` | **The Excel-aware pane code** — reads sheets, calls the engine, writes results. Owns `writeSpecs`, the Office.js sheet writer. |
 | `functions.js` / `functions.json` | The `=RECON.COMPARETO…` custom functions + their metadata. |
-| `engine.js` | Classic reconciliation engine, ported verbatim from the web app. |
+| `engine.js` | The reconciliation engine, ported verbatim from the web app. |
 | `comparison.js` / `sheets.js` | Build the comparison / unmatched output sheet specs. |
-| `flex-*.js` / `flex.css` | **Modular Recon**, ported from the web app's `js/flex-*.js`: `-model` (state), `-engine` (matching), `-setup` (step 1 + wiring), `-erd` (the canvas), `-results` (output + sheet specs). |
-| `utils.js` | Value/date parsing helpers both engines need. |
+| `utils.js` | Value/date parsing helpers the engine needs. |
 | `assets/icon-*.png` | Ribbon icons. Regenerate with `python make_icons.py`. |
 | `index.html` / `guide.html` | Landing page for the GitHub Pages root, and the how-to for coworkers. |
 
-### How the two flows coexist
+### Output sheets
 
-`body.flex-mode` decides which of the two `<div>`s in `<main>` is on screen, and
-that is the entire integration: neither flow touches the other's state. The
-classic flow owns worksheets prefixed `Recon - `, Modular owns `Modular - `, and
-`writeSpecs(ctx, specs, prefix)` clears only its own prefix — so running one
-never eats the other's output. Both are skipped when listing input sheets.
+A sheet spec is `{ name, aoa, colWidths, bandRows[], titleRows[], paintRects[],
+autofilter }`. `paintRects` is the outcome colouring: `sheets.js` collects the
+cells to fill and `_painter()` merges each column's consecutive same-colour
+cells into one rectangle, which `paintCells` then applies a colour at a time
+through a single `getRanges` call per 50 blocks — so colouring a long sheet is
+a handful of Office.js operations rather than one per cell.
 
-A sheet spec is `{ name, aoa, colWidths, bandRows[], titleRows[], rowFills{},
-paintRects[], autofilter }`. `rowFills` is the classic three-colour row shading;
-`paintRects` is Modular's arbitrary-colour rectangles, pre-merged into maximal
-blocks by `flexFillRects` so a painted sheet costs a handful of Office.js range
-operations rather than one per cell.
+Office reports a date cell as a serial number; `_display_date` (`utils.js`)
+converts anything above the 1900 epoch back to a date, so the engine sees the
+same values the user does.
 
-### Porting notes
-
-The `flex-*.js` files are a close port of the web app's, so fixes travel between
-the two. What genuinely differs:
-
-- **Ingest.** The web app reads uploaded workbooks through SheetJS; here every
-  sheet is a worksheet of the open workbook, read via Office.js in
-  `flexReadWorkbook()`. Office reports a date cell as a serial number, so cells
-  whose *number format* says "date" are converted back to `Date` objects
-  (`isExcelDateFormat` / `excelSerialToDate` in `utils.js`) — otherwise a date
-  column would be typed as numbers.
-- **Output.** `XLSX.writeFile` is replaced by sheet specs handed to `writeSpecs`.
-- **Layout.** A pane is narrow: the comparisons rail sits under the canvas rather
-  than beside it, the two result tables stack, the per-sheet Data tabs became a
-  picker, and the rail carries a two-dropdown form that adds the same link a drag
-  would.
+`writeSpecs` deletes every existing `Recon - ` sheet before writing, so each run
+is clean; those sheets are also skipped when listing input sheets.
 
 ## Developing
 

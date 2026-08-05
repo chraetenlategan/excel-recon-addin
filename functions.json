@@ -4,7 +4,7 @@
     {
       "id": "COMPARETOBS",
       "name": "COMPARETOBS",
-      "description": "Match this row's amount + date (and description) against the Bank Statement sheet. Returns the match status.",
+      "description": "Match this row's amount + date (and description) against the Bank Statement sheet. Returns ✓, ⚠ or ✗.",
       "helpUrl": "https://github.com/chraetenlategan/excel-recon-addin",
       "result": { "dimensionality": "scalar", "type": "string" },
       "options": { "volatile": true },
@@ -18,7 +18,7 @@
     {
       "id": "COMPARETOCB",
       "name": "COMPARETOCB",
-      "description": "Match this row's amount + date (and description) against the Cashbook sheet. Returns the match status.",
+      "description": "Match this row's amount + date (and description) against the Cashbook sheet. Returns ✓, ⚠ or ✗.",
       "helpUrl": "https://github.com/chraetenlategan/excel-recon-addin",
       "result": { "dimensionality": "scalar", "type": "string" },
       "options": { "volatile": true },
@@ -32,7 +32,7 @@
     {
       "id": "COMPARETOGL",
       "name": "COMPARETOGL",
-      "description": "Match this row's amount + date (and description) against the General Ledger sheet. Returns the match status.",
+      "description": "Match this row's amount + date (and description) against the General Ledger sheet. Returns ✓, ⚠ or ✗.",
       "helpUrl": "https://github.com/chraetenlategan/excel-recon-addin",
       "result": { "dimensionality": "scalar", "type": "string" },
       "options": { "volatile": true },

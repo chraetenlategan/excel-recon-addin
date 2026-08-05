@@ -32,13 +32,6 @@
   <p>Reconcile matches a <strong>cashbook</strong> against a <strong>bank statement</strong>
      and/or a <strong>general ledger</strong> by <strong>amount + date</strong>, right inside
      Excel. Everything runs on your own machine — no data leaves it.</p>
-  <p>The panel has <strong>two modes</strong>, switched at the top:</p>
-  <ul>
-    <li><strong>Classic</strong> — the cashbook / bank / ledger flow described below. Use it when
-        your data looks like accounting data.</li>
-    <li><strong>Modular</strong> — any sheets, any columns. You say which columns to compare and it
-        reconciles them. See <a href="#modular">Modular Recon</a>.</li>
-  </ul>
 
   <div class="box">
     <strong>One-time setup.</strong> Ask whoever set this up to install it for you (see the
@@ -66,7 +59,7 @@
     <li><strong>Home ▸ Reconcile</strong> to open the panel on the right.</li>
     <li>Pick which tab is the <strong>Cashbook</strong>, plus at least one of
         <strong>Bank statement</strong> / <strong>General ledger</strong>.</li>
-    <li>Click <strong>Load &amp; detect columns</strong>.</li>
+    <li>Click <strong>Load</strong>.</li>
     <li>Check the detected columns. Wrong guess? Change the drop-downs (Date / Description /
         Amount, or switch to Debit + Credit). You can also set a <strong>month filter</strong>.</li>
     <li>Click <strong>Reconcile</strong>.</li>
@@ -75,15 +68,20 @@
      Unmatched). Your original tabs are never changed.</p>
 
   <h3>Reading the colours</h3>
+  <p>There are no status columns to read — the <strong>amount cell</strong> of every row is
+     coloured, and the only text added is the row number the match was found on (under
+     <code>BS</code>, <code>GL</code> or <code>CB</code>).</p>
   <table>
-    <tr><th>Colour</th><th>Status</th><th>Means</th></tr>
-    <tr><td><span class="swatch green"></span>Green</td><td>Matched</td>
-        <td>Amount, date <em>and</em> description all line up.</td></tr>
-    <tr><td><span class="swatch amber"></span>Amber</td><td>Check description</td>
+    <tr><th>Colour</th><th>Means</th></tr>
+    <tr><td><span class="swatch green"></span>Green</td>
+        <td>Matched — amount, date <em>and</em> description all line up.</td></tr>
+    <tr><td><span class="swatch amber"></span>Amber</td>
         <td>Amount + date match, but the description doesn't — eyeball it.</td></tr>
-    <tr><td><span class="swatch red"></span>Red</td><td>Not found</td>
-        <td>No row with the same amount + date on the other side.</td></tr>
+    <tr><td><span class="swatch red"></span>Red</td>
+        <td>Not found: no row with the same amount + date on the other side.</td></tr>
   </table>
+  <p class="muted">With both a statement and a ledger loaded, the amount cell shows the combined
+     outcome (amber if the two sides disagree) and each row-number cell is coloured on its own.</p>
   <p>The <strong>Recon - Unmatched</strong> sheet goes further: it <em>suggests</em> which
      leftover rows probably belong together (including one payment that hit the bank as several
      lines), then lists whatever it couldn't pair.</p>
@@ -97,8 +95,8 @@
   <p>Example — in a cashbook row where amount is in <code>D2</code>, date in <code>B2</code>,
      description in <code>C2</code>:</p>
   <div class="box"><code>=RECON.COMPARETOBS(D2, B2, C2)</code></div>
-  <p>The cell shows <em>Matched to Bank Statement</em>, <em>Check description (Bank Statement)</em>,
-     or <em>Not found on Bank Statement</em>. Drag the fill handle down to check a whole column.</p>
+  <p>The cell shows <strong>✓</strong> (matched), <strong>⚠</strong> (check the description) or
+     <strong>✗</strong> (not found). Drag the fill handle down to check a whole column.</p>
   <p>Three versions, one per target sheet:</p>
   <table>
     <tr><th>Formula</th><th>Checks against</th></tr>
@@ -109,54 +107,13 @@
   <p class="muted">Description is optional. If it picks the wrong target sheet, add the sheet name
      as the last argument: <code>=RECON.COMPARETOBS(D2, B2, C2, "Bank Feb")</code>.</p>
 
-  <h2 id="modular">4. Modular Recon — anything against anything</h2>
-  <p>The Classic flow knows what a cashbook is: it needs a Date, a Description and an Amount.
-     <strong>Modular</strong> knows nothing about accounting and asks you to describe the comparison
-     instead — so it will reconcile a stock count against a delivery note, an invoice list against a
-     remittance, or any two sheets that ought to agree.</p>
-  <p>Switch to <strong>Modular</strong> at the top of the panel, then work through three steps:</p>
-  <ol>
-    <li><strong>Sheets</strong> — click <strong>Load worksheets</strong> to pull in every tab of the
-        workbook. For each one, click the row that holds its <em>column names</em> (it guesses, and
-        is usually right). Untick anything that isn't part of the job.</li>
-    <li><strong>Model</strong> — each sheet is drawn as a box, each column as a line inside it.
-        Drag from a column on one box to a column on another to say “compare these two”. Draw
-        several lines between the same two sheets and a row only matches when <em>all</em> of them
-        agree — that's how you express “same date <em>and</em> same amount”. Click a line to change
-        how it's compared (as text, a number, a date, or digits only) or to remove it.
-        <span class="muted">Narrow panel? The <strong>Add a comparison</strong> pickers under the
-        canvas do the same thing without dragging, and <strong>Suggest</strong> links up any columns
-        that share a name.</span></li>
-    <li><strong>Results</strong> — press <strong>Reconcile</strong>. You get a block per pair of
-        sheets: how many rows paired up, and every row that didn't. Click a row number to see it in
-        context; <strong>Write sheets</strong> puts the whole thing into the workbook as
-        <code>Modular - …</code> tabs, coloured the same way.</li>
-  </ol>
-
-  <h3>Reading the Modular statuses</h3>
-  <table>
-    <tr><th>Status</th><th>Means</th></tr>
-    <tr><td>Matched</td><td>Exactly one row on the other sheet has the same values in the columns you linked.</td></tr>
-    <tr><td>Matched (repeated value)</td>
-        <td>It matched, but that combination of values appears more than once — the totals are right,
-            but <em>which</em> row paired with which is arbitrary. Worth a look.</td></tr>
-    <tr><td>Not found</td><td>Nothing on the other sheet has those values.</td></tr>
-    <tr><td>No value</td><td>One of the linked columns was blank or unreadable on that row, so it was
-            never compared. Two blanks are never treated as a match.</td></tr>
-  </table>
-  <p class="muted">Modular compares values <em>exactly</em>, once tidied up — dates are read whatever
-     way round they're written, numbers rounded to the decimals you choose, and text matched ignoring
-     capitals. It never matches “approximately”, which is what lets it tell you that 30 rows on one
-     side and 29 on the other means exactly one is missing. Use <strong>Colours</strong> to change
-     the palette or to paint whole rows instead of just the compared cells.</p>
-
   <h2>Troubleshooting</h2>
   <table>
     <tr><th>Problem</th><th>Fix</th></tr>
     <tr><td>No <strong>Reconcile</strong> button on the Home tab</td>
         <td>The add-in isn't installed on this machine — see the install page, then restart Excel.</td></tr>
     <tr><td>Detected the wrong columns</td>
-        <td>Change the drop-downs after <strong>Load &amp; detect</strong>, or give your columns
+        <td>Change the drop-downs after <strong>Load</strong>, or give your columns
             clearer headers (Date / Description / Amount).</td></tr>
     <tr><td>Dates don't match though they look the same</td>
         <td>Usually fine — it reads day/month/year in any order. If not, format both columns as real
@@ -166,18 +123,6 @@
     <tr><td>A formula says <em>No … sheet found</em></td>
         <td>Pass the exact sheet name as the last argument, e.g.
             <code>=RECON.COMPARETOBS(D2, B2, C2, "Statement")</code>.</td></tr>
-    <tr><td>Modular: <strong>Reconcile</strong> stays greyed out</td>
-        <td>Nothing has been linked yet — draw at least one line on the Model step, between columns
-            on two <em>different</em> sheets.</td></tr>
-    <tr><td>Modular: everything comes back <em>No value</em></td>
-        <td>The header row is probably wrong, so the column you linked isn't the one you meant. Go
-            back to step 1 and click the right row.</td></tr>
-    <tr><td>Modular: dates that look identical don't match</td>
-        <td>A column is read one way round for all of its rows. If a sheet mixes 07/17/2024 with
-            15/07/2024, format that column as real dates in Excel and reload the worksheets.</td></tr>
-    <tr><td>Modular: you changed the data in Excel</td>
-        <td>Press <strong>Load worksheets</strong> again — it refreshes the values and keeps every
-            comparison you drew.</td></tr>
   </table>
 
   <p class="muted" style="margin-top:28px">All matching runs locally in Excel. No data leaves your machine.</p>

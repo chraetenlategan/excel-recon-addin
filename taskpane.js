@@ -17,7 +17,7 @@ const SIDES = ["cashbook", "statement", "ledger"];
 const LABELS = { cashbook: "Cashbook", statement: "Bank statement", ledger: "General ledger" };
 const ROLE_LABEL = { date: "Date", description: "Description", amount: "Amount", debit: "Debit (out)", credit: "Credit (in)" };
 
-// Per side after "Load & detect": { sheetName, rows, columns, mapping }.
+// Per side after "Load": { sheetName, rows, columns, mapping }.
 const loaded = { cashbook: null, statement: null, ledger: null };
 
 Office.onReady((info) => {
@@ -28,7 +28,6 @@ Office.onReady((info) => {
   $("refresh-sheets").onclick = loadSheetList;
   $("load-detect").onclick = loadAndDetect;
   $("reconcile").onclick = reconcile;
-  initFlex();          // Modular Recon wires itself up (flex-setup.js)
   loadSheetList();
 });
 
@@ -46,8 +45,7 @@ async function loadSheetList() {
       const sheets = ctx.workbook.worksheets;
       sheets.load("items/name");
       await ctx.sync();
-      const names = sheets.items.map((s) => s.name)
-        .filter((n) => !n.startsWith(RESULT_PREFIX) && !n.startsWith(FLEX_PREFIX));
+      const names = sheets.items.map((s) => s.name).filter((n) => !n.startsWith(RESULT_PREFIX));
       const guess = (needles) => names.find((n) => needles.some((k) => n.toLowerCase().includes(k))) || "";
       fillSelect("sel-cashbook", names, false, guess(["cashbook", "cash book", "cash"]));
       fillSelect("sel-statement", names, true, guess(["bank", "statement"]));
@@ -85,10 +83,10 @@ async function loadAndDetect() {
   const stName = $("sel-statement").value;
   const glName = $("sel-ledger").value;
   if (!cbName || !(stName || glName)) {
-    setStatus("Pick a cashbook plus at least one of bank statement / ledger.", true);
+    setStatus("Pick a cashbook and one sheet to match it against.", true);
     return;
   }
-  setStatus("Reading sheets & detecting columns…");
+  setStatus("Reading…");
   try {
     await Excel.run(async (ctx) => {
       const chosen = { cashbook: cbName, statement: stName, ledger: glName };
@@ -109,7 +107,7 @@ async function loadAndDetect() {
     });
     SIDES.forEach(renderMapping);
     $("mapping-wrap").classList.remove("hidden");
-    setStatus("Check the detected columns, then Reconcile.");
+    setStatus("Check the columns, then Reconcile.");
   } catch (e) {
     setStatus("Error: " + e.message, true);
   }
@@ -151,14 +149,14 @@ function renderMapping(side) {
   const dc = m.mode === "debit_credit";
   const monthable = side === "cashbook" || side === "ledger";
 
-  let html = `<h3>${LABELS[side]} — sheet “${escapeHtml(L.sheetName)}”</h3>`;
+  let html = `<h3>${LABELS[side]} · ${escapeHtml(L.sheetName)}</h3>`;
 
   html += `<div class="field grid2">
-      <label style="margin:0"><span>Header row (0 = none)</span>
+      <label style="margin:0"><span>Header row</span>
         <input type="number" min="0" data-k="headerRow" value="${m.headerRow || 0}"></label>
-      <label style="margin:0"><span>Amount layout</span>
+      <label style="margin:0"><span>Amount</span>
         <select data-k="mode">
-          <option value="single"${dc ? "" : " selected"}>Single amount</option>
+          <option value="single"${dc ? "" : " selected"}>Single</option>
           <option value="debit_credit"${dc ? " selected" : ""}>Debit + Credit</option>
         </select></label>
     </div>`;
@@ -180,8 +178,8 @@ function renderMapping(side) {
     const active = new Set(_monthFilterKeys(m.monthFilter));
     const chips = months.length
       ? months.map((k) => `<label><input type="checkbox" data-month="${k}"${active.has(k) ? " checked" : ""}> ${monthLabel(k)}</label>`).join("")
-      : `<span class="none">no dates detected</span>`;
-    html += `<div class="field"><span>Month filter (none = all months)</span><div class="months">${chips}</div></div>`;
+      : `<span class="none">no dates</span>`;
+    html += `<div class="field"><span>Months</span><div class="months">${chips}</div></div>`;
   }
 
   card.innerHTML = html;
@@ -229,7 +227,7 @@ async function reconcile() {
   if (!loaded.cashbook) { setStatus("Load a cashbook first.", true); return; }
   for (const side of SIDES) {
     if (loaded[side] && !validSide(loaded[side].mapping)) {
-      setStatus(`${LABELS[side]}: pick at least a Date column and an Amount (or Debit/Credit).`, true);
+      setStatus(`${LABELS[side]}: needs a Date and an Amount column.`, true);
       return;
     }
   }
@@ -242,7 +240,7 @@ async function reconcile() {
       gl ? gl.rows : null, gl ? gl.mapping : null
     );
     const specs = buildResultSheets(result);
-    setStatus(`Writing ${specs.length} result sheets…`);
+    setStatus("Writing…");
     await Excel.run(async (ctx) => { await writeSpecs(ctx, specs); });
     showSummary(result);
     setStatus(`Done — see the “${RESULT_PREFIX}…” sheets.`);
@@ -255,11 +253,6 @@ async function reconcile() {
 
 /* ---------- Office.js sheet writer ---------- */
 
-const FILL = {
-  green: { fill: "C6EFCE", font: "006100" },
-  amber: { fill: "FFEB9C", font: "9C6500" },
-  red:   { fill: "FFC7CE", font: "9C0006" },
-};
 const NAVY = "1F3864";
 const GRID = "D9D9D9";
 
@@ -269,9 +262,7 @@ function supports(v) {
 
 /**
  * Write a set of sheet specs into the workbook, replacing whatever the previous
- * run of the same flow left behind. `prefix` says which sheets that is — the
- * classic flow owns "Recon - …" and Modular Recon owns "Modular - …", so
- * running one never eats the other's output.
+ * run left behind (every sheet whose name starts with `prefix`).
  */
 async function writeSpecs(ctx, specs, prefix = RESULT_PREFIX) {
   // Clear any previous result sheets so each run is clean.
@@ -286,8 +277,7 @@ async function writeSpecs(ctx, specs, prefix = RESULT_PREFIX) {
   for (const spec of specs) writeOne(ctx, spec);
   await ctx.sync();
 
-  // Land the user on the sheet that reads as the answer: the side-by-side
-  // Comparison for the classic flow, otherwise whatever was written first.
+  // Land the user on the sheet that reads as the answer.
   const landing = specs.find((s) => s.name === prefix + "Comparison") || specs[0];
   if (landing) {
     const ws = ctx.workbook.worksheets.getItemOrNullObject(landing.name);
@@ -324,35 +314,9 @@ function writeOne(ctx, spec) {
     b.style = "Continuous"; b.color = "#" + GRID; b.weight = "Thin";
   }
 
-  // Coloured rows (group consecutive same-colour rows into one range).
-  const fills = spec.rowFills || {};
-  let run = null;
-  const flush = () => {
-    if (!run) return;
-    const rng = ws.getRangeByIndexes(run.start, 0, run.count, width);
-    rng.format.fill.color = "#" + FILL[run.color].fill;
-    rng.format.font.color = "#" + FILL[run.color].font;
-    run = null;
-  };
-  for (let i = 0; i < nRows; i++) {
-    const color = fills[i] || null;
-    if (run && run.color === color && color) { run.count++; continue; }
-    flush();
-    if (color) run = { start: i, count: 1, color };
-  }
-  flush();
-
-  // Free-form coloured rectangles (Modular Recon paints individual compared
-  // cells, in colours the user picked, so it can't use the three-colour runs
-  // above). Each rect is already a maximal block — see flexFillRects.
-  for (const rect of spec.paintRects || []) {
-    if (rect.r0 >= nRows || rect.c0 >= width) continue;
-    const rows = Math.min(rect.rows, nRows - rect.r0);
-    const cols = Math.min(rect.cols, width - rect.c0);
-    const rng = ws.getRangeByIndexes(rect.r0, rect.c0, rows, cols);
-    rng.format.fill.color = "#" + rect.fill;
-    if (rect.font) rng.format.font.color = "#" + rect.font;
-  }
+  // The outcome colouring: green/amber/red cells, already merged into maximal
+  // blocks by sheets.js (_painter).
+  paintCells(ws, spec.paintRects || [], nRows, width);
 
   // Navy header band(s).
   for (const r of spec.bandRows || []) {
@@ -388,34 +352,66 @@ function writeOne(ctx, spec) {
   }
 }
 
-/* ---------- summary chips ---------- */
+/**
+ * Fill a sheet's coloured cells. Rectangles that share a colour are set through
+ * one RangeAreas ("A2:A9,C4") call where Excel supports it, so a long sheet is
+ * a few operations rather than one per block.
+ */
+const AREAS_PER_CALL = 50;
 
+function paintCells(ws, rects, nRows, width) {
+  const groups = new Map();
+  for (const rect of rects) {
+    if (rect.r0 >= nRows || rect.c0 >= width) continue;
+    const rows = Math.min(rect.rows, nRows - rect.r0);
+    const cols = Math.min(rect.cols, width - rect.c0);
+    const key = rect.fill + "|" + (rect.font || "");
+    if (!groups.has(key)) groups.set(key, { fill: rect.fill, font: rect.font, boxes: [] });
+    groups.get(key).boxes.push({ r0: rect.r0, c0: rect.c0, rows, cols });
+  }
+
+  const areas = supports("1.9");
+  for (const g of groups.values()) {
+    if (!areas) {
+      for (const b of g.boxes) {
+        const rng = ws.getRangeByIndexes(b.r0, b.c0, b.rows, b.cols);
+        rng.format.fill.color = "#" + g.fill;
+        if (g.font) rng.format.font.color = "#" + g.font;
+      }
+      continue;
+    }
+    const addrs = g.boxes.map((b) => {
+      const from = colLetter(b.c0) + (b.r0 + 1);
+      const to = colLetter(b.c0 + b.cols - 1) + (b.r0 + b.rows);
+      return from === to ? from : from + ":" + to;
+    });
+    for (let i = 0; i < addrs.length; i += AREAS_PER_CALL) {
+      const rngs = ws.getRanges(addrs.slice(i, i + AREAS_PER_CALL).join(","));
+      rngs.format.fill.color = "#" + g.fill;
+      if (g.font) rngs.format.font.color = "#" + g.font;
+    }
+  }
+}
+
+/* ---------- summary ---------- */
+
+// One line per side: green / amber / red counts in the same colours the cells
+// were written in, plus how many of that side's own rows went unclaimed.
 function showSummary(result) {
-  const s = result.summary;
   const box = $("summary");
-  const chips = [];
-  if (result.hasStatement) {
-    chips.push(
-      ["matched", "Matched (BS)", s["Matched"]],
-      ["check", "Check desc (BS)", s["Check description"]],
-      ["missing", "Not found (BS)", s["Not found"]],
-      ["plain", "Unmatched BS rows", result.unmatchedStatementCount],
-    );
-  }
-  if (result.hasLedger) {
-    const g = result.ledgerSummary;
-    chips.push(
-      ["matched", "Matched (GL)", g["Matched"] + g["Check description"]],
-      ["missing", "Not found (GL)", g["Not found"]],
-      ["plain", "Unmatched GL rows", result.unmatchedLedgerCount],
-    );
-  }
-  const noAmount = (result.hasStatement ? s : result.ledgerSummary)["No amount"];
-  if (noAmount) chips.push(["noamount", "No amount", noAmount]);
+  const lines = [];
 
-  box.innerHTML = chips
-    .filter(([, , n]) => n !== undefined && n !== null)
-    .map(([cls, label, n]) => `<span class="chip ${cls}">${label}: ${n}</span>`)
-    .join("");
+  const tally = (who, counts, leftover) => lines.push(
+    `<div class="tally"><span class="who">${who}</span>` +
+    `<span class="n green">${counts["Matched"]}</span>` +
+    `<span class="n amber">${counts["Check description"]}</span>` +
+    `<span class="n red">${counts["Not found"] + counts["No amount"]}</span>` +
+    `<span class="n plain">${leftover}</span></div>`
+  );
+
+  if (result.hasStatement) tally("BS", result.summary, result.unmatchedStatementCount);
+  if (result.hasLedger) tally("GL", result.ledgerSummary, result.unmatchedLedgerCount);
+
+  box.innerHTML = lines.join("");
   box.classList.remove("hidden");
 }
