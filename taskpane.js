@@ -28,6 +28,7 @@ Office.onReady((info) => {
   $("refresh-sheets").onclick = loadSheetList;
   $("load-detect").onclick = loadAndDetect;
   $("reconcile").onclick = reconcile;
+  $("clear-colours").onclick = clearColours;
   loadSheetList();
 });
 
@@ -67,13 +68,18 @@ function fillSelect(id, names, allowNone, selected) {
 
 /* ---------- read a sheet's used range as rows ---------- */
 
+// Returns the used range's values plus where it sits on the sheet, since
+// colour-only mode writes back to those very cells.
 async function readSheet(ctx, name) {
   const ws = ctx.workbook.worksheets.getItem(name);
   const used = ws.getUsedRangeOrNullObject(true);
-  used.load(["values"]);
+  used.load(["values", "rowIndex", "columnIndex"]);
   await ctx.sync();
-  if (used.isNullObject) return [];
-  return used.values.map((row) => row.map((v) => (v === null ? "" : v)));
+  if (used.isNullObject) return { rows: [], origin: { row: 0, col: 0 } };
+  return {
+    rows: used.values.map((row) => row.map((v) => (v === null ? "" : v))),
+    origin: { row: used.rowIndex, col: used.columnIndex },
+  };
 }
 
 /* ---------- 1b. load + auto-detect, then render mapping ---------- */
@@ -94,12 +100,13 @@ async function loadAndDetect() {
         const name = chosen[side];
         loaded[side] = null;
         if (!name) continue;
-        const rows = await readSheet(ctx, name);
+        const { rows, origin } = await readSheet(ctx, name);
         if (!rows.length) throw new Error(`"${name}" looks empty.`);
         const analysis = await runLocalAnalyze(rows, [], name);
         loaded[side] = {
           sheetName: name,
           rows,
+          origin,
           columns: analysis.columns,
           mapping: { ...analysis.mapping, headerRow: analysis.headerRow, monthFilter: [] },
         };
@@ -239,6 +246,16 @@ async function reconcile() {
       cb.rows, st ? st.rows : null, cb.mapping, st ? st.mapping : null,
       gl ? gl.rows : null, gl ? gl.mapping : null
     );
+
+    if ($("colour-only").checked) {
+      setStatus("Colouring…");
+      let painted = 0;
+      await Excel.run(async (ctx) => { painted = await paintSourceSheets(ctx, result); });
+      showSummary(result);
+      setStatus(`Done — ${painted} amount${painted === 1 ? "" : "s"} coloured on your own sheets.`);
+      return;
+    }
+
     const specs = buildResultSheets(result);
     setStatus("Writing…");
     await Excel.run(async (ctx) => { await writeSpecs(ctx, specs); });
@@ -390,6 +407,98 @@ function paintCells(ws, rects, nRows, width) {
       rngs.format.fill.color = "#" + g.fill;
       if (g.font) rngs.format.font.color = "#" + g.font;
     }
+  }
+}
+
+/* ---------- colour-only mode ---------- */
+
+// Excel's grid, used as the clamp when painting straight onto a source sheet.
+const SHEET_ROWS = 1048576;
+const SHEET_COLS = 16384;
+
+// A cashbook row counts as found only if every side it was compared against
+// claimed it; "Check description" still means the amount itself was found.
+function foundOnAllSides(result, r) {
+  const ok = (s) => s === "Matched" || s === "Check description";
+  if (result.hasStatement && !ok(r.status)) return false;
+  if (result.hasLedger && !ok(r.ledgerStatus)) return false;
+  return true;
+}
+
+// Per side: 1-based row number within that sheet's used range -> found?
+function colourOnlyPlan(result) {
+  const plan = {};
+  const withAmount = (rows) => rows.filter((r) => r.amount !== null);
+  plan.cashbook = new Map(withAmount(result.rows).map((r) => [r.row, foundOnAllSides(result, r)]));
+  if (result.hasStatement) plan.statement = new Map(withAmount(result.statement).map((s) => [s.row, s.matched]));
+  if (result.hasLedger) plan.ledger = new Map(withAmount(result.ledger).map((s) => [s.row, s.matched]));
+  return plan;
+}
+
+/**
+ * Colour-only mode: no result sheets at all — just fill the amount cell of every
+ * row on the user's own sheets, green where the amount was found on the other
+ * side and red where it wasn't. Fills only; fonts and values stay untouched.
+ */
+async function paintSourceSheets(ctx, result) {
+  const plan = colourOnlyPlan(result);
+  const sources = result.sources || {};
+  let painted = 0;
+
+  for (const side of SIDES) {
+    const found = plan[side];
+    const src = sources[side];
+    const L = loaded[side];
+    if (!found || !src || !L) continue;
+    const cols = src.amountCols || [];
+    if (!cols.length) continue;
+
+    const paint = _painter();
+    for (const [rowNum, ok] of found) {
+      const raw = src.rows[rowNum - 1] || [];
+      // In debit/credit layout only the side that carries a figure is coloured.
+      const filled = cols.filter((c) => String(raw[c] ?? "").trim() !== "");
+      for (const c of (filled.length ? filled : cols)) {
+        paint.set(L.origin.row + rowNum - 1, L.origin.col + c, ok ? "green" : "red");
+      }
+      painted++;
+    }
+
+    const ws = ctx.workbook.worksheets.getItem(L.sheetName);
+    const rects = paint.rects().map((r) => ({ ...r, font: null }));
+    paintCells(ws, rects, SHEET_ROWS, SHEET_COLS);
+  }
+  await ctx.sync();
+  return painted;
+}
+
+// Undo colour-only mode: strip the fill from the amount column(s) of every
+// loaded sheet, over the data rows only.
+async function clearColours() {
+  const sides = SIDES.filter((s) => loaded[s]);
+  if (!sides.length) { setStatus("Load your sheets first.", true); return; }
+  $("clear-colours").disabled = true;
+  setStatus("Clearing…");
+  try {
+    await Excel.run(async (ctx) => {
+      for (const side of sides) {
+        const L = loaded[side];
+        const start = L.mapping.headerRow || 0;
+        const n = L.rows.length - start;
+        const cols = amountCols(L.mapping);
+        if (n <= 0 || !cols.length) continue;
+        const ws = ctx.workbook.worksheets.getItem(L.sheetName);
+        for (const c of cols) {
+          ws.getRangeByIndexes(L.origin.row + start, L.origin.col + c, n, 1).format.fill.clear();
+        }
+      }
+      await ctx.sync();
+    });
+    setStatus("Colours cleared.");
+  } catch (e) {
+    setStatus("Error: " + e.message, true);
+  } finally {
+    $("clear-colours").disabled = false;
   }
 }
 

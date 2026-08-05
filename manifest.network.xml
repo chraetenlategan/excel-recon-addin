@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OfficeApp
+  xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+  xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
+  xsi:type="TaskPaneApp">
+
+  <!-- Unique add-in id. Keep this stable forever; changing it makes Excel
+       treat it as a different add-in. Same id as the GitHub-hosted manifest. -->
+  <Id>11ef275f-d353-4b26-a17b-ce5047e9c2e1</Id>
+  <Version>1.0.0.0</Version>
+  <ProviderName>Chraeten Lategan</ProviderName>
+  <DefaultLocale>en-US</DefaultLocale>
+  <DisplayName DefaultValue="Reconcile" />
+  <Description DefaultValue="Match a cashbook against a bank statement and/or general ledger by amount + date, right inside Excel." />
+
+  <!-- INTERNAL HOSTING: every URL below points at your own server.
+       Replace  https://YOUR-SERVER/recon-addin  everywhere in this file with
+       the real HTTPS base URL of the box serving these static files
+       (e.g. https://addins.corp.local/recon-addin). No trailing slash.
+       The <Id> above must stay unchanged. -->
+  <IconUrl DefaultValue="https://YOUR-SERVER/recon-addin/assets/icon-32.png" />
+  <HighResolutionIconUrl DefaultValue="https://YOUR-SERVER/recon-addin/assets/icon-80.png" />
+  <SupportUrl DefaultValue="https://github.com/chraetenlategan/excel-recon-addin" />
+
+  <!-- Excel only. -->
+  <Hosts>
+    <Host Name="Workbook" />
+  </Hosts>
+  <Requirements>
+    <Sets DefaultMinVersion="1.1">
+      <Set Name="ExcelApi" MinVersion="1.4" />
+    </Sets>
+  </Requirements>
+
+  <DefaultSettings>
+    <SourceLocation DefaultValue="https://YOUR-SERVER/recon-addin/taskpane.html" />
+  </DefaultSettings>
+
+  <!-- Needs to read the workbook and write the results sheet. -->
+  <Permissions>ReadWriteDocument</Permissions>
+
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <!-- Shared runtime: the task pane and the =RECON.* custom functions run in
+         one long-lived runtime (taskpane.html), so the functions can reuse the
+         column mapping the pane loaded. -->
+    <Requirements>
+      <bt:Sets DefaultMinVersion="1.1">
+        <bt:Set Name="SharedRuntime" MinVersion="1.1" />
+      </bt:Sets>
+    </Requirements>
+    <Hosts>
+      <Host xsi:type="Workbook">
+        <Runtimes>
+          <Runtime resid="Taskpane.Url" lifetime="long" />
+        </Runtimes>
+        <DesktopFormFactor>
+          <GetStarted>
+            <Title resid="GetStarted.Title" />
+            <Description resid="GetStarted.Description" />
+            <LearnMoreUrl resid="GetStarted.LearnMoreUrl" />
+          </GetStarted>
+          <FunctionFile resid="Commands.Url" />
+          <ExtensionPoint xsi:type="PrimaryCommandSurface">
+            <OfficeTab id="TabHome">
+              <Group id="Recon.Group">
+                <Label resid="Group.Label" />
+                <Icon>
+                  <bt:Image size="16" resid="Icon.16" />
+                  <bt:Image size="32" resid="Icon.32" />
+                  <bt:Image size="80" resid="Icon.80" />
+                </Icon>
+                <Control xsi:type="Button" id="Recon.OpenPane">
+                  <Label resid="OpenPane.Label" />
+                  <Supertip>
+                    <Title resid="OpenPane.Label" />
+                    <Description resid="OpenPane.Tooltip" />
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Icon.16" />
+                    <bt:Image size="32" resid="Icon.32" />
+                    <bt:Image size="80" resid="Icon.80" />
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>ReconTaskpane</TaskpaneId>
+                    <SourceLocation resid="Taskpane.Url" />
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+          <ExtensionPoint xsi:type="CustomFunctions">
+            <Script>
+              <SourceLocation resid="Taskpane.Url" />
+            </Script>
+            <Page>
+              <SourceLocation resid="Taskpane.Url" />
+            </Page>
+            <Metadata>
+              <SourceLocation resid="Functions.Metadata.Url" />
+            </Metadata>
+            <Namespace resid="Functions.Namespace" />
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+
+    <Resources>
+      <bt:Images>
+        <bt:Image id="Icon.16" DefaultValue="https://YOUR-SERVER/recon-addin/assets/icon-16.png" />
+        <bt:Image id="Icon.32" DefaultValue="https://YOUR-SERVER/recon-addin/assets/icon-32.png" />
+        <bt:Image id="Icon.80" DefaultValue="https://YOUR-SERVER/recon-addin/assets/icon-80.png" />
+      </bt:Images>
+      <bt:Urls>
+        <bt:Url id="Commands.Url" DefaultValue="https://YOUR-SERVER/recon-addin/taskpane.html" />
+        <bt:Url id="Taskpane.Url" DefaultValue="https://YOUR-SERVER/recon-addin/taskpane.html" />
+        <bt:Url id="Functions.Metadata.Url" DefaultValue="https://YOUR-SERVER/recon-addin/functions.json" />
+        <bt:Url id="GetStarted.LearnMoreUrl" DefaultValue="https://github.com/chraetenlategan/excel-recon-addin" />
+      </bt:Urls>
+      <bt:ShortStrings>
+        <bt:String id="GetStarted.Title" DefaultValue="Reconcile is ready" />
+        <bt:String id="Group.Label" DefaultValue="Reconcile" />
+        <bt:String id="OpenPane.Label" DefaultValue="Reconcile" />
+        <bt:String id="Functions.Namespace" DefaultValue="RECON" />
+      </bt:ShortStrings>
+      <bt:LongStrings>
+        <bt:String id="GetStarted.Description" DefaultValue="On the Home tab, click Reconcile to open the pane, pick your sheets, and match." />
+        <bt:String id="OpenPane.Tooltip" DefaultValue="Open the reconciliation pane." />
+      </bt:LongStrings>
+    </Resources>
+  </VersionOverrides>
+</OfficeApp>

@@ -67,6 +67,14 @@ button.primary {
 button.primary:hover:not(:disabled) { background: var(--accent-dark); }
 button.primary:disabled { background: #c8c6c4; cursor: not-allowed; }
 
+button.link {
+  display: block; width: 100%; margin-top: 6px; padding: 5px;
+  font: inherit; font-size: 12px; color: var(--muted);
+  background: none; border: 0; cursor: pointer; text-decoration: underline;
+}
+button.link:hover:not(:disabled) { color: var(--fg); }
+button.link:disabled { color: #c8c6c4; cursor: not-allowed; text-decoration: none; }
+
 button.icon {
   width: 32px; height: 32px; flex: none;
   border: 1px solid var(--line); border-radius: 3px;

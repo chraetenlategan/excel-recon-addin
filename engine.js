@@ -273,6 +273,19 @@ function _side_rows(side, matched_rows) {
 
 /* ---------- top-level reconcile ---------- */
 
+// Which column(s) of a mapped sheet hold the amount, so callers know which
+// cells carry the outcome colour.
+function amountCols(map) {
+  const cols = [];
+  if (map.mode === "debit_credit") {
+    if (map.debit !== null && map.debit !== undefined) cols.push(map.debit);
+    if (map.credit !== null && map.credit !== undefined) cols.push(map.credit);
+  } else if (map.amount !== null && map.amount !== undefined) {
+    cols.push(map.amount);
+  }
+  return cols;
+}
+
 function runLocalReconcile(cashbookRows, statementRows, cashbookMap, statementMap, ledgerRows = null, ledgerMap = null) {
   const cashbook = _extract(cashbookRows, cashbookMap);
   const hasStatement = statementRows !== null && statementMap !== null;
@@ -338,18 +351,6 @@ function runLocalReconcile(cashbookRows, statementRows, cashbookMap, statementMa
     const counts = { "Matched": 0, "Check description": 0, "Not found": 0, "No amount": 0 };
     for (const st of statuses) if (counts[st] !== undefined) counts[st]++;
     return counts;
-  }
-
-  // Which column(s) hold the amount, so the writer knows which cells to colour.
-  function amountCols(map) {
-    const cols = [];
-    if (map.mode === "debit_credit") {
-      if (map.debit !== null && map.debit !== undefined) cols.push(map.debit);
-      if (map.credit !== null && map.credit !== undefined) cols.push(map.credit);
-    } else if (map.amount !== null && map.amount !== undefined) {
-      cols.push(map.amount);
-    }
-    return cols;
   }
 
   const stRowsOut = _side_rows(statement, matchedStatement);

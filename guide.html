@@ -65,7 +65,8 @@
     <li>Click <strong>Reconcile</strong>.</li>
   </ol>
   <p>New sheets appear, named <code>Recon - …</code> (Comparison, Cashbook, Bank Statement,
-     Unmatched). Your original tabs are never changed.</p>
+     Unmatched). Your original tabs are never changed — unless you tick
+     <strong>Colour only</strong>, which colours them instead of writing anything.</p>
 
   <h3>Reading the colours</h3>
   <p>There are no status columns to read — the <strong>amount cell</strong> of every row is
@@ -82,6 +83,15 @@
   </table>
   <p class="muted">With both a statement and a ledger loaded, the amount cell shows the combined
      outcome (amber if the two sides disagree) and each row-number cell is coloured on its own.</p>
+  <h3>Colour only</h3>
+  <p>Tick <strong>Colour only — no result sheets</strong> before you reconcile and nothing new is
+     written: no <code>Recon - …</code> sheets, no row numbers, no unmatched listing. The amount
+     cells on <em>your own</em> tabs are simply filled <span class="swatch green"></span>green if
+     the amount was found on the other side and <span class="swatch red"></span>red if it wasn't.
+     (There's no amber here — a description mismatch still counts as found.)</p>
+  <p class="muted"><strong>Clear colours</strong> underneath the Reconcile button strips those
+     fills off the amount columns again.</p>
+
   <p>The <strong>Recon - Unmatched</strong> sheet goes further: it <em>suggests</em> which
      leftover rows probably belong together (including one payment that hit the bank as several
      lines), then lists whatever it couldn't pair.</p>
