@@ -1,13 +1,11 @@
-# Reconcile — Excel add-in
+# Compare — Excel add-in
 
-A Microsoft Excel **task-pane add-in** that reconciles worksheets against each
-other, right inside the workbook. It reuses the matching engines from the
-[static-reconciliation](https://github.com/chraetenlategan/static-reconciliation)
-web app, unchanged — the only new code is the Office.js glue that reads your
-worksheets and writes the result sheets.
+A Microsoft Excel **task-pane add-in** that compares **any column on any sheet
+against any column on any other sheet**, right inside the workbook, and colours
+the result on your own cells.
 
-It does one job: **cashbook vs bank statement and/or general ledger**, matched
-by **amount + date**.
+No fixed layout, no headers to get right, no cashbook/bank/ledger roles — pick
+two columns and it matches them.
 
 Everything runs locally in Excel. **No data leaves your machine** — the hosting
 (GitHub Pages) only serves the add-in's code, never your numbers.
@@ -16,24 +14,32 @@ Everything runs locally in Excel. **No data leaves your machine** — the hostin
 
 ## Using it
 
-1. Put each dataset on its own worksheet — e.g. tabs named `Cashbook`,
-   `Bank Statement`, and (optionally) `Ledger`. Each just needs a header row
-   with **Date**, **Description**, and **Amount** columns (or **Debit** +
-   **Credit** instead of Amount). Column order doesn't matter — they're
-   auto-detected.
-2. **Home ▸ Reconcile** to open the pane.
-3. Pick which sheet is the cashbook, and at least one of statement / ledger.
-4. Click **Reconcile**. Results land on new `Recon - …` sheets. The outcome is
-   carried by **colour on the amount cell**, not by status text:
-   - 🟩 amount, date and description all line up.
-   - 🟨 amount + date match but the description doesn't.
-   - 🟥 no matching amount + date on the other side.
+1. **Home ▸ Reconcile** to open the pane.
+2. **Side A**: pick the sheet and the column (e.g. `Sheet1`, column `E`).
+   **Side B**: pick the other sheet and column (e.g. `Sheet3`, column `F`).
+3. Optionally **limit the rows** on either side. The box takes
+   `B12:B25` (column *and* rows — the column overrides the picker),
+   `12:25` (rows only, on the picked column), or `B` / `B:B` (whole column).
+   Leave it blank to use the whole used column. The line under each side always
+   shows the exact range that will be read.
+4. Options:
+   - **Ignore + / −** — `-100` matches `100` (on by default).
+   - **Ignore case & spacing** — for text values.
+5. Click **Compare**. Every non-blank cell in both ranges is filled:
+   - 🟩 found on the other side,
+   - 🟥 not found.
 
-   The only text added to a copied sheet is the row number the match was found
-   on, under a short `BS` / `GL` / `CB` column.
-5. The pane also shows the **detected columns** so you can sanity-check the
-   mapping. If it guessed wrong, rename your headers (Date / Description /
-   Amount, or Debit + Credit) and reconcile again.
+   Blank cells are left alone. Values are matched **one-for-one**: three `100`s
+   on A against two on B leave the third one red.
+
+Numbers compare as numbers (rounded to cents, `(50)`, `50-`, `R1 234,56` and
+`50 DR` all understood); anything else compares as text.
+
+**Nothing else in your workbook is touched.** The add-in only ever sets a cell's
+**fill colour** — no values are written, nothing is merged or unmerged, and
+fonts, borders, number formats and column widths are left exactly as they were.
+**Clear colours** removes the fill from the last two ranges it painted, and
+nothing else.
 
 ### In-cell formulas
 
@@ -50,8 +56,7 @@ Each returns a single mark against the target sheet — `✓` matched, `⚠` mat
 but the description differs (or no amount), `✗` not found — so a filled-down
 column reads at a glance and takes ordinary conditional formatting. The target
 sheet is auto-detected by name (bank/statement, cashbook, ledger); pass an
-explicit `sheetName` to override. If you've already clicked **Load** in the
-pane, the formulas reuse that side's exact column mapping.
+explicit `sheetName` to override. They work independently of the compare pane.
 
 ---
 

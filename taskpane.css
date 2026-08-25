@@ -37,7 +37,7 @@ section { margin-bottom: 14px; }
 
 label { display: block; margin-bottom: 10px; font-weight: 600; }
 
-select, input[type="number"] {
+select, input[type="number"], input[type="text"] {
   width: 100%;
   margin-top: 3px;
   padding: 5px 7px;
@@ -86,28 +86,22 @@ button.icon:hover { background: #f3f2f1; }
 .status.err { color: #a4262c; }
 .hidden { display: none; }
 
-/* column mapping */
-.mapcard {
+/* one side of the comparison */
+.side {
   border: 1px solid var(--line);
   border-radius: 3px;
-  padding: 10px;
-  margin-bottom: 10px;
+  padding: 10px 10px 4px;
 }
-.mapcard h3 { margin: 0 0 8px; font-size: 12px; font-weight: 600; color: var(--accent-dark); }
-.mapcard .field { margin-bottom: 7px; }
-.mapcard .field > span { font-size: 11px; color: var(--muted); font-weight: 600; }
-.mapcard .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.mapcard .months { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
-.mapcard .months label {
-  font-weight: 400; margin: 0; display: inline-flex; align-items: center; gap: 4px;
-  border: 1px solid var(--line); border-radius: 10px; padding: 1px 7px; font-size: 11px;
-}
-.mapcard .months .none { color: var(--muted); }
+.side h3 { margin: 0 0 8px; font-size: 12px; font-weight: 600; color: var(--accent-dark); }
+.side .hint { font-weight: 400; color: var(--muted); font-size: 11px; }
+.side .range { margin: 0 0 8px; font-size: 11px; color: var(--muted); min-height: 14px; }
+.side .range.err { color: #a4262c; }
 
 /* result counts — the colours mirror the cells written into the workbook */
 .summary { display: grid; gap: 6px; }
 .tally { display: flex; align-items: center; gap: 6px; }
-.tally .who { width: 22px; font-size: 11px; font-weight: 600; color: var(--muted); }
+.tally .who { width: 14px; font-size: 11px; font-weight: 600; color: var(--muted); }
+.tally .ref { flex: 1; font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tally .n {
   min-width: 42px; text-align: center; padding: 3px 6px;
   border-radius: 3px; font-size: 12px; font-weight: 600;

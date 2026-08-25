@@ -1,44 +1,58 @@
 "use strict";
 
 /**
- * taskpane.js — the only Excel-aware code. Three jobs:
- *   1. list worksheets + let the user map columns (role pickers, header row,
- *      amount layout, month filter) per side,
- *   2. read the chosen sheets and run the ported engine,
- *   3. write the full result-sheet set (comparison, reverse-direction per-file
- *      sheets, unmatched correlations) back into the workbook.
+ * taskpane.js — generic two-column comparison.
  *
- * engine.js / comparison.js / sheets.js are untouched web-app logic; everything
- * Office.js lives here.
+ * Pick any two sheets, any column on each, optionally limit the rows, and every
+ * value in column A is matched against the values in column B. Matches go
+ * green, non-matches go red — on the user's own cells.
+ *
+ * Nothing else about the workbook is touched: no values are written, no cells
+ * are merged or unmerged, no fonts, borders, number formats or column widths
+ * are changed. The only property this file ever sets is a cell's fill colour
+ * (and "Clear colours" only ever clears that same fill).
  */
 
 const $ = (id) => document.getElementById(id);
-const SIDES = ["cashbook", "statement", "ledger"];
-const LABELS = { cashbook: "Cashbook", statement: "Bank statement", ledger: "General ledger" };
-const ROLE_LABEL = { date: "Date", description: "Description", amount: "Amount", debit: "Debit (out)", credit: "Credit (in)" };
 
-// Per side after "Load": { sheetName, rows, columns, mapping }.
-const loaded = { cashbook: null, statement: null, ledger: null };
+const GREEN = "C6EFCE";
+const RED = "FFC7CE";
+
+// Per side: what the user picked plus the used-range geometry of that sheet.
+const state = {
+  a: { sheet: "", column: null, limit: "", used: null },
+  b: { sheet: "", column: null, limit: "", used: null },
+};
+
+// The ranges the last Compare painted, so "Clear colours" can undo exactly them.
+let lastPainted = [];
 
 Office.onReady((info) => {
   if (info.host !== Office.HostType.Excel) {
     setStatus("This add-in only runs in Excel.", true);
     return;
   }
+  for (const side of ["a", "b"]) {
+    el(side, "sheet").onchange = () => { state[side].sheet = el(side, "sheet").value; loadColumns(side); };
+    el(side, "column").onchange = () => { state[side].column = intOrNull(el(side, "column").value); updatePreview(side); };
+    el(side, "limit").oninput = () => { state[side].limit = el(side, "limit").value; updatePreview(side); };
+  }
   $("refresh-sheets").onclick = loadSheetList;
-  $("load-detect").onclick = loadAndDetect;
-  $("reconcile").onclick = reconcile;
+  $("compare").onclick = compare;
   $("clear-colours").onclick = clearColours;
   loadSheetList();
 });
 
+const el = (side, key) => document.querySelector(`#side-${side} [data-k="${key}"]`);
+const intOrNull = (v) => (v === "" || v === null || v === undefined ? null : parseInt(v, 10));
+
 function setStatus(msg, isError) {
-  const el = $("status");
-  el.textContent = msg || "";
-  el.classList.toggle("err", !!isError);
+  const box = $("status");
+  box.textContent = msg || "";
+  box.classList.toggle("err", !!isError);
 }
 
-/* ---------- 1a. list worksheets ---------- */
+/* ---------- sheet + column pickers ---------- */
 
 async function loadSheetList() {
   try {
@@ -46,465 +60,267 @@ async function loadSheetList() {
       const sheets = ctx.workbook.worksheets;
       sheets.load("items/name");
       await ctx.sync();
-      const names = sheets.items.map((s) => s.name).filter((n) => !n.startsWith(RESULT_PREFIX));
-      const guess = (needles) => names.find((n) => needles.some((k) => n.toLowerCase().includes(k))) || "";
-      fillSelect("sel-cashbook", names, false, guess(["cashbook", "cash book", "cash"]));
-      fillSelect("sel-statement", names, true, guess(["bank", "statement"]));
-      fillSelect("sel-ledger", names, true, guess(["ledger", "gl", "general"]));
+      const names = sheets.items.map((s) => s.name);
+      for (const side of ["a", "b"]) {
+        const sel = el(side, "sheet");
+        const keep = state[side].sheet;
+        sel.innerHTML = "";
+        for (const n of names) sel.appendChild(new Option(n, n));
+        // Default the two sides to different sheets where the book has two.
+        const fallback = side === "a" ? names[0] : (names[1] || names[0]);
+        sel.value = names.includes(keep) ? keep : (fallback || "");
+        state[side].sheet = sel.value;
+      }
     });
+    for (const side of ["a", "b"]) await loadColumns(side);
     setStatus("");
   } catch (e) {
     setStatus("Could not read worksheets: " + e.message, true);
   }
 }
 
-function fillSelect(id, names, allowNone, selected) {
-  const sel = $(id);
-  sel.innerHTML = "";
-  if (allowNone) sel.appendChild(new Option("— none —", ""));
-  for (const n of names) sel.appendChild(new Option(n, n));
-  if (selected) sel.value = selected;
-}
-
-/* ---------- read a sheet's used range as rows ---------- */
-
-// Returns the used range's values plus where it sits on the sheet, since
-// colour-only mode writes back to those very cells.
-async function readSheet(ctx, name) {
-  const ws = ctx.workbook.worksheets.getItem(name);
-  const used = ws.getUsedRangeOrNullObject(true);
-  used.load(["values", "rowIndex", "columnIndex"]);
-  await ctx.sync();
-  if (used.isNullObject) return { rows: [], origin: { row: 0, col: 0 } };
-  return {
-    rows: used.values.map((row) => row.map((v) => (v === null ? "" : v))),
-    origin: { row: used.rowIndex, col: used.columnIndex },
-  };
-}
-
-/* ---------- 1b. load + auto-detect, then render mapping ---------- */
-
-async function loadAndDetect() {
-  const cbName = $("sel-cashbook").value;
-  const stName = $("sel-statement").value;
-  const glName = $("sel-ledger").value;
-  if (!cbName || !(stName || glName)) {
-    setStatus("Pick a cashbook and one sheet to match it against.", true);
-    return;
-  }
-  setStatus("Reading…");
+// Fill the column picker from the sheet's used range, labelling each column
+// with whatever sits in its first used row ("E — Amount").
+async function loadColumns(side) {
+  const s = state[side];
+  const sel = el(side, "column");
+  if (!s.sheet) { sel.innerHTML = ""; s.used = null; updatePreview(side); return; }
   try {
     await Excel.run(async (ctx) => {
-      const chosen = { cashbook: cbName, statement: stName, ledger: glName };
-      for (const side of SIDES) {
-        const name = chosen[side];
-        loaded[side] = null;
-        if (!name) continue;
-        const { rows, origin } = await readSheet(ctx, name);
-        if (!rows.length) throw new Error(`"${name}" looks empty.`);
-        const analysis = await runLocalAnalyze(rows, [], name);
-        loaded[side] = {
-          sheetName: name,
-          rows,
-          origin,
-          columns: analysis.columns,
-          mapping: { ...analysis.mapping, headerRow: analysis.headerRow, monthFilter: [] },
-        };
+      const ws = ctx.workbook.worksheets.getItem(s.sheet);
+      const used = ws.getUsedRangeOrNullObject(true);
+      used.load(["rowIndex", "columnIndex", "rowCount", "columnCount", "values"]);
+      await ctx.sync();
+      if (used.isNullObject) { s.used = null; sel.innerHTML = ""; return; }
+
+      s.used = {
+        row: used.rowIndex, col: used.columnIndex,
+        rows: used.rowCount, cols: used.columnCount,
+      };
+      const header = used.values[0] || [];
+      const keep = s.column;
+      sel.innerHTML = "";
+      for (let i = 0; i < s.used.cols; i++) {
+        const index = s.used.col + i;
+        const label = _text(header[i]);
+        sel.appendChild(new Option(colLetter(index) + (label ? " — " + label : ""), String(index)));
       }
+      s.column = (keep !== null && keep >= s.used.col && keep < s.used.col + s.used.cols) ? keep : s.used.col;
+      sel.value = String(s.column);
     });
-    SIDES.forEach(renderMapping);
-    $("mapping-wrap").classList.remove("hidden");
-    setStatus("Check the columns, then Reconcile.");
   } catch (e) {
-    setStatus("Error: " + e.message, true);
+    setStatus("Could not read “" + s.sheet + "”: " + e.message, true);
   }
+  updatePreview(side);
 }
 
-// Unique "YYYYMM" months present in the mapped date column, sorted.
-function detectMonths(L) {
-  const m = L.mapping;
-  if (m.date === null || m.date === undefined) return [];
-  const start = m.headerRow || 0;
-  const set = new Set();
-  for (let i = start; i < L.rows.length; i++) {
-    for (const k of monthKeys(L.rows[i][m.date])) set.add(k);
+/* ---------- the row limiter ---------- */
+
+/**
+ * Turn the limit box into { column, firstRow, lastRow } (all 1-based rows,
+ * 0-based column), falling back to the picked column and the sheet's used rows.
+ * Accepts "B12:B25", "12:25", "B:B", "B" or "" (blank = whole used column).
+ */
+function resolveRange(side) {
+  const s = state[side];
+  if (!s.sheet) throw new Error("Pick a sheet on both sides.");
+  if (!s.used) throw new Error(`“${s.sheet}” looks empty.`);
+
+  let column = s.column === null ? s.used.col : s.column;
+  let firstRow = s.used.row + 1;
+  let lastRow = s.used.row + s.used.rows;
+
+  const raw = (s.limit || "").trim().toUpperCase().replace(/\$/g, "");
+  if (raw) {
+    const m = raw.match(/^([A-Z]{1,3})?(\d+)?\s*:\s*([A-Z]{1,3})?(\d+)?$/) || raw.match(/^([A-Z]{1,3})()()()$/);
+    if (!m) throw new Error(`Side ${side.toUpperCase()}: “${s.limit}” is not a range like B12:B25.`);
+    const [, c1, r1, , r2] = m;
+    if (c1) column = colIndex(c1);
+    if (r1 && r2) { firstRow = Math.min(+r1, +r2); lastRow = Math.max(+r1, +r2); }
+    else if (r1 || r2) throw new Error(`Side ${side.toUpperCase()}: give both ends, e.g. B12:B25.`);
   }
-  return [...set].sort();
+  if (lastRow < firstRow) throw new Error(`Side ${side.toUpperCase()}: that range has no rows.`);
+  return { sheet: s.sheet, column, firstRow, lastRow };
 }
 
-function monthLabel(key) {
-  const names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const mm = +key.slice(4, 6);
-  return mm >= 1 && mm <= 12 ? `${names[mm - 1]} ${key.slice(0, 4)}` : key;
+// "B" -> 1, "AA" -> 26. The inverse of colLetter().
+function colIndex(letters) {
+  let n = 0;
+  for (const ch of letters) n = n * 26 + (ch.charCodeAt(0) - 64);
+  return n - 1;
 }
 
-function colOptions(columns, selected) {
-  const none = `<option value=""${selected === null || selected === undefined ? " selected" : ""}>— none —</option>`;
-  const opts = columns.map((c) => {
-    const label = `${c.letter}${c.header ? " — " + c.header : ""}`;
-    return `<option value="${c.index}"${c.index === selected ? " selected" : ""}>${escapeHtml(label)}</option>`;
-  });
-  return none + opts.join("");
-}
+const addressOf = (r) => `${colLetter(r.column)}${r.firstRow}:${colLetter(r.column)}${r.lastRow}`;
 
-function renderMapping(side) {
-  const card = $("map-" + side);
-  const L = loaded[side];
-  if (!L) { card.classList.add("hidden"); card.innerHTML = ""; return; }
-  card.classList.remove("hidden");
-  const m = L.mapping;
-  const dc = m.mode === "debit_credit";
-  const monthable = side === "cashbook" || side === "ledger";
-
-  let html = `<h3>${LABELS[side]} · ${escapeHtml(L.sheetName)}</h3>`;
-
-  html += `<div class="field grid2">
-      <label style="margin:0"><span>Header row</span>
-        <input type="number" min="0" data-k="headerRow" value="${m.headerRow || 0}"></label>
-      <label style="margin:0"><span>Amount</span>
-        <select data-k="mode">
-          <option value="single"${dc ? "" : " selected"}>Single</option>
-          <option value="debit_credit"${dc ? " selected" : ""}>Debit + Credit</option>
-        </select></label>
-    </div>`;
-
-  html += `<div class="field"><span>Date</span><select data-role="date">${colOptions(L.columns, m.date)}</select></div>`;
-  html += `<div class="field"><span>Description</span><select data-role="description">${colOptions(L.columns, m.description)}</select></div>`;
-
-  if (dc) {
-    html += `<div class="field grid2">
-        <label style="margin:0"><span>Debit (out)</span><select data-role="debit">${colOptions(L.columns, m.debit)}</select></label>
-        <label style="margin:0"><span>Credit (in)</span><select data-role="credit">${colOptions(L.columns, m.credit)}</select></label>
-      </div>`;
-  } else {
-    html += `<div class="field"><span>Amount</span><select data-role="amount">${colOptions(L.columns, m.amount)}</select></div>`;
-  }
-
-  if (monthable) {
-    const months = detectMonths(L);
-    const active = new Set(_monthFilterKeys(m.monthFilter));
-    const chips = months.length
-      ? months.map((k) => `<label><input type="checkbox" data-month="${k}"${active.has(k) ? " checked" : ""}> ${monthLabel(k)}</label>`).join("")
-      : `<span class="none">no dates</span>`;
-    html += `<div class="field"><span>Months</span><div class="months">${chips}</div></div>`;
-  }
-
-  card.innerHTML = html;
-  wireMapping(side);
-}
-
-function wireMapping(side) {
-  const card = $("map-" + side);
-  const m = loaded[side].mapping;
-  const val = (el) => (el.value === "" ? null : parseInt(el.value, 10));
-
-  card.querySelectorAll("select[data-role]").forEach((sel) => {
-    sel.onchange = () => { m[sel.dataset.role] = val(sel); };
-  });
-  const modeSel = card.querySelector('[data-k="mode"]');
-  if (modeSel) modeSel.onchange = () => {
-    m.mode = modeSel.value;
-    // Switching layout swaps which role pickers are relevant; clear the others.
-    if (m.mode === "debit_credit") { m.amount = null; }
-    else { m.debit = null; m.credit = null; }
-    renderMapping(side);
-  };
-  const hdr = card.querySelector('[data-k="headerRow"]');
-  if (hdr) hdr.onchange = () => {
-    m.headerRow = Math.max(0, parseInt(hdr.value, 10) || 0);
-    renderMapping(side); // month list depends on header row
-  };
-  card.querySelectorAll("input[data-month]").forEach((cb) => {
-    cb.onchange = () => {
-      const set = new Set(_monthFilterKeys(m.monthFilter));
-      if (cb.checked) set.add(cb.dataset.month); else set.delete(cb.dataset.month);
-      m.monthFilter = [...set];
-    };
-  });
-}
-
-/* ---------- 2 + 3. reconcile and write result sheets ---------- */
-
-function validSide(m) {
-  const hasAmount = (m.mode === "debit_credit") ? (m.debit !== null || m.credit !== null) : (m.amount !== null);
-  return m.date !== null && m.date !== undefined && hasAmount;
-}
-
-async function reconcile() {
-  if (!loaded.cashbook) { setStatus("Load a cashbook first.", true); return; }
-  for (const side of SIDES) {
-    if (loaded[side] && !validSide(loaded[side].mapping)) {
-      setStatus(`${LABELS[side]}: needs a Date and an Amount column.`, true);
-      return;
-    }
-  }
-  $("reconcile").disabled = true;
-  setStatus("Matching…");
+function updatePreview(side) {
+  const box = el(side, "preview");
   try {
-    const cb = loaded.cashbook, st = loaded.statement, gl = loaded.ledger;
-    const result = runLocalReconcile(
-      cb.rows, st ? st.rows : null, cb.mapping, st ? st.mapping : null,
-      gl ? gl.rows : null, gl ? gl.mapping : null
-    );
+    const r = resolveRange(side);
+    box.textContent = `${r.sheet}!${addressOf(r)}  ·  ${r.lastRow - r.firstRow + 1} rows`;
+    box.classList.remove("err");
+  } catch (e) {
+    box.textContent = state[side].sheet ? e.message : "";
+    box.classList.add("err");
+  }
+}
 
-    if ($("colour-only").checked) {
+/* ---------- matching ---------- */
+
+/**
+ * The comparison key for one cell. Numbers compare as numbers (rounded to
+ * cents, optionally unsigned); anything else compares as text. Blank cells
+ * return null and are skipped entirely — never coloured, never matched.
+ */
+function keyOf(value, opts) {
+  const n = _amount(value);
+  if (n !== null) {
+    const v = opts.ignoreSign ? Math.abs(n) : n;
+    return "n:" + Math.round(v * 100);
+  }
+  let t = _text(value);
+  if (!t) return null;
+  if (opts.ignoreCase) t = t.toLowerCase().replace(/\s+/g, " ");
+  return "t:" + t;
+}
+
+/**
+ * Pair the two columns off one-for-one: a value on A claims one equal value on
+ * B, so three 100s on A against two on B leave the third 100 red. Returns a
+ * boolean per cell on each side (null = blank, leave alone).
+ */
+function matchColumns(valuesA, valuesB, opts) {
+  const keysA = valuesA.map((v) => keyOf(v, opts));
+  const keysB = valuesB.map((v) => keyOf(v, opts));
+
+  const pool = new Map();
+  keysB.forEach((k, i) => {
+    if (k === null) return;
+    if (!pool.has(k)) pool.set(k, []);
+    pool.get(k).push(i);
+  });
+
+  const hitB = keysB.map((k) => (k === null ? null : false));
+  const hitA = keysA.map((k) => {
+    if (k === null) return null;
+    const queue = pool.get(k);
+    if (!queue || !queue.length) return false;
+    hitB[queue.shift()] = true;
+    return true;
+  });
+  return { hitA, hitB };
+}
+
+/* ---------- compare + paint ---------- */
+
+async function compare() {
+  let ra, rb;
+  try {
+    ra = resolveRange("a");
+    rb = resolveRange("b");
+  } catch (e) {
+    setStatus(e.message, true);
+    return;
+  }
+  const opts = { ignoreSign: $("ignore-sign").checked, ignoreCase: $("ignore-case").checked };
+
+  $("compare").disabled = true;
+  setStatus("Reading…");
+  try {
+    let counts;
+    await Excel.run(async (ctx) => {
+      const wsA = ctx.workbook.worksheets.getItem(ra.sheet);
+      const wsB = ctx.workbook.worksheets.getItem(rb.sheet);
+      const rngA = wsA.getRange(addressOf(ra));
+      const rngB = wsB.getRange(addressOf(rb));
+      rngA.load("values");
+      rngB.load("values");
+      await ctx.sync();
+
+      const valuesA = rngA.values.map((row) => row[0]);
+      const valuesB = rngB.values.map((row) => row[0]);
+      const { hitA, hitB } = matchColumns(valuesA, valuesB, opts);
+
       setStatus("Colouring…");
-      let painted = 0;
-      await Excel.run(async (ctx) => { painted = await paintSourceSheets(ctx, result); });
-      showSummary(result);
-      setStatus(`Done — ${painted} amount${painted === 1 ? "" : "s"} coloured on your own sheets.`);
-      return;
-    }
+      paintColumn(wsA, ra, hitA);
+      paintColumn(wsB, rb, hitB);
+      await ctx.sync();
 
-    const specs = buildResultSheets(result);
-    setStatus("Writing…");
-    await Excel.run(async (ctx) => { await writeSpecs(ctx, specs); });
-    showSummary(result);
-    setStatus(`Done — see the “${RESULT_PREFIX}…” sheets.`);
+      const tally = (hits) => ({
+        green: hits.filter((h) => h === true).length,
+        red: hits.filter((h) => h === false).length,
+        blank: hits.filter((h) => h === null).length,
+      });
+      counts = { a: tally(hitA), b: tally(hitB) };
+    });
+
+    lastPainted = [ra, rb];
+    showSummary(counts, ra, rb);
+    setStatus("Done.");
   } catch (e) {
     setStatus("Error: " + e.message, true);
   } finally {
-    $("reconcile").disabled = false;
+    $("compare").disabled = false;
   }
 }
 
-/* ---------- Office.js sheet writer ---------- */
-
-const NAVY = "1F3864";
-const GRID = "D9D9D9";
-
-function supports(v) {
-  try { return Office.context.requirements.isSetSupported("ExcelApi", v); } catch { return false; }
-}
-
-/**
- * Write a set of sheet specs into the workbook, replacing whatever the previous
- * run left behind (every sheet whose name starts with `prefix`).
- */
-async function writeSpecs(ctx, specs, prefix = RESULT_PREFIX) {
-  // Clear any previous result sheets so each run is clean.
-  const all = ctx.workbook.worksheets;
-  all.load("items/name");
-  await ctx.sync();
-  for (const ws of all.items) {
-    if (ws.name.startsWith(prefix)) ws.delete();
-  }
-  await ctx.sync();
-
-  for (const spec of specs) writeOne(ctx, spec);
-  await ctx.sync();
-
-  // Land the user on the sheet that reads as the answer.
-  const landing = specs.find((s) => s.name === prefix + "Comparison") || specs[0];
-  if (landing) {
-    const ws = ctx.workbook.worksheets.getItemOrNullObject(landing.name);
-    ws.load("name");
-    await ctx.sync();
-    if (!ws.isNullObject) ws.activate();
-  }
-}
-
-function writeOne(ctx, spec) {
-  const ws = ctx.workbook.worksheets.add(spec.name);
-
-  // Rectangular width: widest of data, declared column widths, and any band row.
-  let width = spec.colWidths.length;
-  for (const r of spec.aoa) width = Math.max(width, r.length);
-  const nRows = spec.aoa.length;
-  if (!nRows || !width) return;
-
-  const values = spec.aoa.map((r) => {
-    const out = new Array(width);
-    for (let c = 0; c < width; c++) {
-      const v = r[c];
-      out[c] = (v === undefined || v === null) ? "" : v;
-    }
-    return out;
-  });
-
-  const body = ws.getRangeByIndexes(0, 0, nRows, width);
-  body.values = values;
-
-  // Light gridlines across the whole block.
-  for (const edge of ["EdgeTop", "EdgeBottom", "EdgeLeft", "EdgeRight", "InsideVertical", "InsideHorizontal"]) {
-    const b = body.format.borders.getItem(edge);
-    b.style = "Continuous"; b.color = "#" + GRID; b.weight = "Thin";
-  }
-
-  // The outcome colouring: green/amber/red cells, already merged into maximal
-  // blocks by sheets.js (_painter).
-  paintCells(ws, spec.paintRects || [], nRows, width);
-
-  // Navy header band(s).
-  for (const r of spec.bandRows || []) {
-    const rng = ws.getRangeByIndexes(r, 0, 1, width);
-    rng.format.fill.color = "#" + NAVY;
-    rng.format.font.color = "white";
-    rng.format.font.bold = true;
-    rng.format.horizontalAlignment = "Center";
-  }
-
-  // Bold-navy section title cells (column 0).
-  for (const r of spec.titleRows || []) {
-    const rng = ws.getRangeByIndexes(r, 0, 1, 1);
-    rng.format.font.bold = true;
-    rng.format.font.color = "#" + NAVY;
-  }
-
-  // Column widths (chars → points ≈ ×7).
-  spec.colWidths.forEach((w, c) => {
-    if (c < width) ws.getRangeByIndexes(0, c, 1, 1).getEntireColumn().format.columnWidth = w * 7;
-  });
-
-  // Freeze under the last band row, and add an AutoFilter, where supported.
-  const bands = spec.bandRows || [];
-  if (bands.length && supports("1.7")) {
-    try { ws.freezePanes.freezeRows(Math.max(...bands) + 1); } catch (e) { /* older Excel */ }
-  }
-  if (spec.autofilter && supports("1.9")) {
-    const a = spec.autofilter;
-    try {
-      ws.autoFilter.apply(ws.getRangeByIndexes(a.headerRow, 0, a.lastRow - a.headerRow + 1, a.width));
-    } catch (e) { /* older Excel */ }
-  }
-}
-
-/**
- * Fill a sheet's coloured cells. Rectangles that share a colour are set through
- * one RangeAreas ("A2:A9,C4") call where Excel supports it, so a long sheet is
- * a few operations rather than one per block.
- */
+// Excel takes at most a handful of areas comfortably in one multi-range call.
 const AREAS_PER_CALL = 50;
 
-function paintCells(ws, rects, nRows, width) {
-  const groups = new Map();
-  for (const rect of rects) {
-    if (rect.r0 >= nRows || rect.c0 >= width) continue;
-    const rows = Math.min(rect.rows, nRows - rect.r0);
-    const cols = Math.min(rect.cols, width - rect.c0);
-    const key = rect.fill + "|" + (rect.font || "");
-    if (!groups.has(key)) groups.set(key, { fill: rect.fill, font: rect.font, boxes: [] });
-    groups.get(key).boxes.push({ r0: rect.r0, c0: rect.c0, rows, cols });
+/**
+ * Fill the cells of one column. Consecutive rows of the same colour are merged
+ * into runs, and the runs of a colour go in as one multi-area call where the
+ * host supports it, so a thousand-row column is a few operations.
+ */
+function paintColumn(ws, range, hits) {
+  const runs = { [GREEN]: [], [RED]: [] };
+  let i = 0;
+  while (i < hits.length) {
+    const hit = hits[i];
+    if (hit === null) { i++; continue; }
+    let j = i;
+    while (j + 1 < hits.length && hits[j + 1] === hit) j++;
+    const letter = colLetter(range.column);
+    runs[hit ? GREEN : RED].push(`${letter}${range.firstRow + i}:${letter}${range.firstRow + j}`);
+    i = j + 1;
   }
 
-  const areas = supports("1.9");
-  for (const g of groups.values()) {
-    if (!areas) {
-      for (const b of g.boxes) {
-        const rng = ws.getRangeByIndexes(b.r0, b.c0, b.rows, b.cols);
-        rng.format.fill.color = "#" + g.fill;
-        if (g.font) rng.format.font.color = "#" + g.font;
-      }
+  const multi = supports("1.9");
+  for (const colour of [GREEN, RED]) {
+    const addrs = runs[colour];
+    if (!addrs.length) continue;
+    if (!multi) {
+      for (const a of addrs) ws.getRange(a).format.fill.color = "#" + colour;
       continue;
     }
-    const addrs = g.boxes.map((b) => {
-      const from = colLetter(b.c0) + (b.r0 + 1);
-      const to = colLetter(b.c0 + b.cols - 1) + (b.r0 + b.rows);
-      return from === to ? from : from + ":" + to;
-    });
-    for (let i = 0; i < addrs.length; i += AREAS_PER_CALL) {
-      const rngs = ws.getRanges(addrs.slice(i, i + AREAS_PER_CALL).join(","));
-      rngs.format.fill.color = "#" + g.fill;
-      if (g.font) rngs.format.font.color = "#" + g.font;
+    for (let k = 0; k < addrs.length; k += AREAS_PER_CALL) {
+      ws.getRanges(addrs.slice(k, k + AREAS_PER_CALL).join(",")).format.fill.color = "#" + colour;
     }
   }
 }
 
-/* ---------- colour-only mode ---------- */
-
-// Excel's grid, used as the clamp when painting straight onto a source sheet.
-const SHEET_ROWS = 1048576;
-const SHEET_COLS = 16384;
-
-// The colour a cashbook row gets. With both a statement and a ledger loaded the
-// two sides are told apart: green = found on both, blue = bank statement only,
-// orange = general ledger only, red = neither. With only one side loaded there
-// is nothing to tell apart, so it stays green/red.
-// "Check description" still means the amount itself was found.
-function cashbookColour(result, r) {
-  const ok = (s) => s === "Matched" || s === "Check description";
-  const onSt = result.hasStatement ? ok(r.status) : null;
-  const onLd = result.hasLedger ? ok(r.ledgerStatus) : null;
-  if (onSt !== null && onLd !== null) {
-    if (onSt && onLd) return "green";
-    if (onSt) return "blue";
-    if (onLd) return "orange";
-    return "red";
-  }
-  return (onSt || onLd) ? "green" : "red";
+function supports(version) {
+  try { return Office.context.requirements.isSetSupported("ExcelApi", version); } catch { return false; }
 }
 
-// Per side: 1-based row number within that sheet's used range -> colour.
-function colourOnlyPlan(result) {
-  const plan = {};
-  const withAmount = (rows) => rows.filter((r) => r.amount !== null);
-  const sideColour = (s) => (s.matched ? "green" : "red");
-  plan.cashbook = new Map(withAmount(result.rows).map((r) => [r.row, cashbookColour(result, r)]));
-  if (result.hasStatement) plan.statement = new Map(withAmount(result.statement).map((s) => [s.row, sideColour(s)]));
-  if (result.hasLedger) plan.ledger = new Map(withAmount(result.ledger).map((s) => [s.row, sideColour(s)]));
-  return plan;
-}
-
-/**
- * Colour-only mode: no result sheets at all — just fill the amount cell of every
- * row on the user's own sheets with the colour the plan gave it. Fills only;
- * fonts and values stay untouched.
- */
-async function paintSourceSheets(ctx, result) {
-  const plan = colourOnlyPlan(result);
-  const sources = result.sources || {};
-  let painted = 0;
-
-  for (const side of SIDES) {
-    const colours = plan[side];
-    const src = sources[side];
-    const L = loaded[side];
-    if (!colours || !src || !L) continue;
-    const cols = src.amountCols || [];
-    if (!cols.length) continue;
-
-    const paint = _painter();
-    for (const [rowNum, colour] of colours) {
-      const raw = src.rows[rowNum - 1] || [];
-      // In debit/credit layout only the side that carries a figure is coloured.
-      const filled = cols.filter((c) => String(raw[c] ?? "").trim() !== "");
-      for (const c of (filled.length ? filled : cols)) {
-        paint.set(L.origin.row + rowNum - 1, L.origin.col + c, colour);
-      }
-      painted++;
-    }
-
-    const ws = ctx.workbook.worksheets.getItem(L.sheetName);
-    const rects = paint.rects().map((r) => ({ ...r, font: null }));
-    paintCells(ws, rects, SHEET_ROWS, SHEET_COLS);
-  }
-  await ctx.sync();
-  return painted;
-}
-
-// Undo colour-only mode: strip the fill from the amount column(s) of every
-// loaded sheet, over the data rows only.
+// Undo: clear the fill on exactly the ranges the last Compare painted (or, if
+// there hasn't been one this session, on the ranges currently picked).
 async function clearColours() {
-  const sides = SIDES.filter((s) => loaded[s]);
-  if (!sides.length) { setStatus("Load your sheets first.", true); return; }
+  let ranges = lastPainted;
+  if (!ranges.length) {
+    try { ranges = [resolveRange("a"), resolveRange("b")]; }
+    catch (e) { setStatus(e.message, true); return; }
+  }
   $("clear-colours").disabled = true;
   setStatus("Clearing…");
   try {
     await Excel.run(async (ctx) => {
-      for (const side of sides) {
-        const L = loaded[side];
-        const start = L.mapping.headerRow || 0;
-        const n = L.rows.length - start;
-        const cols = amountCols(L.mapping);
-        if (n <= 0 || !cols.length) continue;
-        const ws = ctx.workbook.worksheets.getItem(L.sheetName);
-        for (const c of cols) {
-          ws.getRangeByIndexes(L.origin.row + start, L.origin.col + c, n, 1).format.fill.clear();
-        }
+      for (const r of ranges) {
+        ctx.workbook.worksheets.getItem(r.sheet).getRange(addressOf(r)).format.fill.clear();
       }
       await ctx.sync();
     });
     setStatus("Colours cleared.");
+    $("summary").classList.add("hidden");
   } catch (e) {
     setStatus("Error: " + e.message, true);
   } finally {
@@ -514,23 +330,13 @@ async function clearColours() {
 
 /* ---------- summary ---------- */
 
-// One line per side: green / amber / red counts in the same colours the cells
-// were written in, plus how many of that side's own rows went unclaimed.
-function showSummary(result) {
-  const box = $("summary");
-  const lines = [];
+function showSummary(counts, ra, rb) {
+  const line = (label, range, c) =>
+    `<div class="tally"><span class="who">${escapeHtml(label)}</span>` +
+    `<span class="ref">${escapeHtml(range.sheet + "!" + addressOf(range))}</span>` +
+    `<span class="n green">${c.green}</span>` +
+    `<span class="n red">${c.red}</span></div>`;
 
-  const tally = (who, counts, leftover) => lines.push(
-    `<div class="tally"><span class="who">${who}</span>` +
-    `<span class="n green">${counts["Matched"]}</span>` +
-    `<span class="n amber">${counts["Check description"]}</span>` +
-    `<span class="n red">${counts["Not found"] + counts["No amount"]}</span>` +
-    `<span class="n plain">${leftover}</span></div>`
-  );
-
-  if (result.hasStatement) tally("BS", result.summary, result.unmatchedStatementCount);
-  if (result.hasLedger) tally("GL", result.ledgerSummary, result.unmatchedLedgerCount);
-
-  box.innerHTML = lines.join("");
-  box.classList.remove("hidden");
+  $("summary").innerHTML = line("A", ra, counts.a) + line("B", rb, counts.b);
+  $("summary").classList.remove("hidden");
 }

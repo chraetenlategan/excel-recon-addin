@@ -4,44 +4,51 @@
   <meta charset="utf-8" />
   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Reconcile</title>
+  <title>Compare</title>
   <link rel="stylesheet" href="taskpane.css" />
   <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
 </head>
 <body>
   <header>
-    <h1>Reconcile</h1>
+    <h1>Compare two columns</h1>
   </header>
 
   <main>
-    <section class="pick">
-      <label>Cashbook
-        <select id="sel-cashbook"></select>
+    <section class="side" id="side-a">
+      <h3>Side A</h3>
+      <label>Sheet
+        <select data-k="sheet"></select>
       </label>
-      <label>Bank statement
-        <select id="sel-statement"></select>
+      <label>Column
+        <select data-k="column"></select>
       </label>
-      <label>General ledger
-        <select id="sel-ledger"></select>
+      <label>Limit to range <span class="hint">optional — e.g. B12:B25 or 12:25</span>
+        <input type="text" data-k="limit" placeholder="whole column" />
       </label>
-      <div class="row">
-        <button id="load-detect" class="primary">Load</button>
-        <button id="refresh-sheets" class="icon" title="Refresh sheet list" aria-label="Refresh sheet list">↻</button>
-      </div>
+      <p class="range" data-k="preview"></p>
     </section>
 
-    <section id="mapping-wrap" class="hidden">
-      <div id="map-cashbook" class="mapcard hidden"></div>
-      <div id="map-statement" class="mapcard hidden"></div>
-      <div id="map-ledger" class="mapcard hidden"></div>
+    <section class="side" id="side-b">
+      <h3>Side B</h3>
+      <label>Sheet
+        <select data-k="sheet"></select>
+      </label>
+      <label>Column
+        <select data-k="column"></select>
+      </label>
+      <label>Limit to range <span class="hint">optional — e.g. B12:B25 or 12:25</span>
+        <input type="text" data-k="limit" placeholder="whole column" />
+      </label>
+      <p class="range" data-k="preview"></p>
+    </section>
 
-      <div class="opts">
-        <label class="check"><input type="checkbox" id="global-desc-strict" /> Strict descriptions</label>
-        <label class="check"><input type="checkbox" id="global-desc-ignore" /> Ignore descriptions</label>
-        <label class="check"><input type="checkbox" id="colour-only" /> Colour only — no result sheets</label>
+    <section class="opts">
+      <label class="check"><input type="checkbox" id="ignore-sign" checked /> Ignore + / − (treat −100 as 100)</label>
+      <label class="check"><input type="checkbox" id="ignore-case" checked /> Ignore case &amp; spacing on text</label>
+      <div class="row">
+        <button id="compare" class="primary">Compare</button>
+        <button id="refresh-sheets" class="icon" title="Refresh sheet list" aria-label="Refresh sheet list">↻</button>
       </div>
-
-      <button id="reconcile" class="primary">Reconcile</button>
       <button id="clear-colours" class="link">Clear colours</button>
     </section>
 
