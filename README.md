@@ -17,9 +17,14 @@ Everything runs locally in Excel. **No data leaves your machine** — the hostin
 1. **Home ▸ Reconcile** to open the pane.
 2. **Side A**: pick the sheet and the column (e.g. `Sheet1`, column `E`).
    **Side B**: pick the other sheet and column (e.g. `Sheet3`, column `F`).
+   Either side can take **more than one column** — ctrl-click them. The columns
+   of a side are pooled, so a value on A counts as found if it turns up in
+   *any* of side B's columns (e.g. `E` on one sheet against `F` **or** `H` on
+   the other).
 3. Optionally **limit the rows** on either side. The box takes
    `B12:B25` (column *and* rows — the column overrides the picker),
-   `12:25` (rows only, on the picked column), or `B` / `B:B` (whole column).
+   `12:25` (rows only, applied to every picked column), or `B` / `B:B` (whole
+   column). Separate several pieces with commas — `F12:F25, H12:H25`.
    Leave it blank to use the whole used column. The line under each side always
    shows the exact range that will be read.
 4. Options:
@@ -29,8 +34,9 @@ Everything runs locally in Excel. **No data leaves your machine** — the hostin
    - 🟩 found on the other side,
    - 🟥 not found.
 
-   Blank cells are left alone. Values are matched **one-for-one**: three `100`s
-   on A against two on B leave the third one red.
+   Blank cells are left alone. Values are matched **one-for-one** across the
+   whole of each side: three `100`s on A against two on B leave the third one
+   red, whichever of B's columns they sit in.
 
 Numbers compare as numbers (rounded to cents, `(50)`, `50-`, `R1 234,56` and
 `50 DR` all understood); anything else compares as text.

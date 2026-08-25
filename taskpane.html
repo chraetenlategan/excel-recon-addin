@@ -10,7 +10,7 @@
 </head>
 <body>
   <header>
-    <h1>Compare two columns</h1>
+    <h1>Compare columns</h1>
   </header>
 
   <main>
@@ -19,10 +19,10 @@
       <label>Sheet
         <select data-k="sheet"></select>
       </label>
-      <label>Column
-        <select data-k="column"></select>
+      <label>Column(s) <span class="hint">ctrl-click for several — a value counts as found if it's in any of them</span>
+        <select data-k="column" multiple size="4"></select>
       </label>
-      <label>Limit to range <span class="hint">optional — e.g. B12:B25 or 12:25</span>
+      <label>Limit to range <span class="hint">optional — e.g. B12:B25, or 12:25, or F12:F25, H12:H25</span>
         <input type="text" data-k="limit" placeholder="whole column" />
       </label>
       <p class="range" data-k="preview"></p>
@@ -33,10 +33,10 @@
       <label>Sheet
         <select data-k="sheet"></select>
       </label>
-      <label>Column
-        <select data-k="column"></select>
+      <label>Column(s) <span class="hint">ctrl-click for several — a value counts as found if it's in any of them</span>
+        <select data-k="column" multiple size="4"></select>
       </label>
-      <label>Limit to range <span class="hint">optional — e.g. B12:B25 or 12:25</span>
+      <label>Limit to range <span class="hint">optional — e.g. B12:B25, or 12:25, or F12:F25, H12:H25</span>
         <input type="text" data-k="limit" placeholder="whole column" />
       </label>
       <p class="range" data-k="preview"></p>

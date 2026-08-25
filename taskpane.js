@@ -1,11 +1,15 @@
 "use strict";
 
 /**
- * taskpane.js — generic two-column comparison.
+ * taskpane.js — generic column comparison.
  *
- * Pick any two sheets, any column on each, optionally limit the rows, and every
- * value in column A is matched against the values in column B. Matches go
+ * Pick any sheet and any column(s) on each side, optionally limit the rows, and
+ * every value on side A is matched against the values on side B. Matches go
  * green, non-matches go red — on the user's own cells.
+ *
+ * Either/or: a side can carry several columns. They are pooled, so a value in
+ * one column on A counts as found if it turns up in *any* of side B's columns
+ * (and the same the other way round).
  *
  * Nothing else about the workbook is touched: no values are written, no cells
  * are merged or unmerged, no fonts, borders, number formats or column widths
@@ -19,9 +23,10 @@ const GREEN = "C6EFCE";
 const RED = "FFC7CE";
 
 // Per side: what the user picked plus the used-range geometry of that sheet.
+// `columns` is a list of 0-based column indexes — several means either/or.
 const state = {
-  a: { sheet: "", column: null, limit: "", used: null },
-  b: { sheet: "", column: null, limit: "", used: null },
+  a: { sheet: "", columns: [], limit: "", used: null },
+  b: { sheet: "", columns: [], limit: "", used: null },
 };
 
 // The ranges the last Compare painted, so "Clear colours" can undo exactly them.
@@ -34,7 +39,7 @@ Office.onReady((info) => {
   }
   for (const side of ["a", "b"]) {
     el(side, "sheet").onchange = () => { state[side].sheet = el(side, "sheet").value; loadColumns(side); };
-    el(side, "column").onchange = () => { state[side].column = intOrNull(el(side, "column").value); updatePreview(side); };
+    el(side, "column").onchange = () => { state[side].columns = pickedColumns(side); updatePreview(side); };
     el(side, "limit").oninput = () => { state[side].limit = el(side, "limit").value; updatePreview(side); };
   }
   $("refresh-sheets").onclick = loadSheetList;
@@ -44,7 +49,8 @@ Office.onReady((info) => {
 });
 
 const el = (side, key) => document.querySelector(`#side-${side} [data-k="${key}"]`);
-const intOrNull = (v) => (v === "" || v === null || v === undefined ? null : parseInt(v, 10));
+const pickedColumns = (side) =>
+  [...el(side, "column").selectedOptions].map((o) => parseInt(o.value, 10)).sort((x, y) => x - y);
 
 function setStatus(msg, isError) {
   const box = $("status");
@@ -98,15 +104,16 @@ async function loadColumns(side) {
         rows: used.rowCount, cols: used.columnCount,
       };
       const header = used.values[0] || [];
-      const keep = s.column;
+      const last = s.used.col + s.used.cols - 1;
+      const keep = s.columns.filter((c) => c >= s.used.col && c <= last);
       sel.innerHTML = "";
       for (let i = 0; i < s.used.cols; i++) {
         const index = s.used.col + i;
         const label = _text(header[i]);
         sel.appendChild(new Option(colLetter(index) + (label ? " — " + label : ""), String(index)));
       }
-      s.column = (keep !== null && keep >= s.used.col && keep < s.used.col + s.used.cols) ? keep : s.used.col;
-      sel.value = String(s.column);
+      s.columns = keep.length ? keep : [s.used.col];
+      for (const opt of sel.options) opt.selected = s.columns.includes(parseInt(opt.value, 10));
     });
   } catch (e) {
     setStatus("Could not read “" + s.sheet + "”: " + e.message, true);
@@ -117,30 +124,47 @@ async function loadColumns(side) {
 /* ---------- the row limiter ---------- */
 
 /**
- * Turn the limit box into { column, firstRow, lastRow } (all 1-based rows,
- * 0-based column), falling back to the picked column and the sheet's used rows.
- * Accepts "B12:B25", "12:25", "B:B", "B" or "" (blank = whole used column).
+ * Turn a side into { sheet, parts: [{ column, firstRow, lastRow }] } — one part
+ * per column being read, all pooled together when matching.
+ *
+ * The limit box is a comma-separated list of range pieces, each of which may
+ * name a column, rows, or both:
+ *   ""                   whole used rows of every picked column
+ *   "12:25"              rows 12-25 of every picked column
+ *   "B12:B25"            that one range (the column overrides the picker)
+ *   "F12:F25, H12:H25"   either/or across two ranges
+ *   "F, H"               those two whole columns
  */
-function resolveRange(side) {
+function resolveSide(side) {
   const s = state[side];
+  const where = `Side ${side.toUpperCase()}`;
   if (!s.sheet) throw new Error("Pick a sheet on both sides.");
   if (!s.used) throw new Error(`“${s.sheet}” looks empty.`);
 
-  let column = s.column === null ? s.used.col : s.column;
-  let firstRow = s.used.row + 1;
-  let lastRow = s.used.row + s.used.rows;
+  const picked = s.columns.length ? s.columns : [s.used.col];
+  const usedFirst = s.used.row + 1;
+  const usedLast = s.used.row + s.used.rows;
 
   const raw = (s.limit || "").trim().toUpperCase().replace(/\$/g, "");
-  if (raw) {
-    const m = raw.match(/^([A-Z]{1,3})?(\d+)?\s*:\s*([A-Z]{1,3})?(\d+)?$/) || raw.match(/^([A-Z]{1,3})()()()$/);
-    if (!m) throw new Error(`Side ${side.toUpperCase()}: “${s.limit}” is not a range like B12:B25.`);
-    const [, c1, r1, , r2] = m;
-    if (c1) column = colIndex(c1);
-    if (r1 && r2) { firstRow = Math.min(+r1, +r2); lastRow = Math.max(+r1, +r2); }
-    else if (r1 || r2) throw new Error(`Side ${side.toUpperCase()}: give both ends, e.g. B12:B25.`);
+  if (!raw) {
+    return { sheet: s.sheet, parts: picked.map((column) => ({ column, firstRow: usedFirst, lastRow: usedLast })) };
   }
-  if (lastRow < firstRow) throw new Error(`Side ${side.toUpperCase()}: that range has no rows.`);
-  return { sheet: s.sheet, column, firstRow, lastRow };
+
+  const parts = [];
+  for (const token of raw.split(",").map((t) => t.trim()).filter(Boolean)) {
+    const m = token.match(/^([A-Z]{1,3})?(\d+)?\s*:\s*([A-Z]{1,3})?(\d+)?$/) || token.match(/^([A-Z]{1,3})()()()$/);
+    if (!m) throw new Error(`${where}: “${token}” is not a range like B12:B25.`);
+    const [, c1, r1, , r2] = m;
+    let firstRow = usedFirst, lastRow = usedLast;
+    if (r1 && r2) { firstRow = Math.min(+r1, +r2); lastRow = Math.max(+r1, +r2); }
+    else if (r1 || r2) throw new Error(`${where}: give both ends, e.g. B12:B25.`);
+    if (lastRow < firstRow) throw new Error(`${where}: “${token}” has no rows.`);
+    // A piece that names a column is that column; one that only gives rows
+    // applies those rows to every column picked above.
+    for (const column of (c1 ? [colIndex(c1)] : picked)) parts.push({ column, firstRow, lastRow });
+  }
+  if (!parts.length) throw new Error(`${where}: nothing to read.`);
+  return { sheet: s.sheet, parts };
 }
 
 // "B" -> 1, "AA" -> 26. The inverse of colLetter().
@@ -150,13 +174,14 @@ function colIndex(letters) {
   return n - 1;
 }
 
-const addressOf = (r) => `${colLetter(r.column)}${r.firstRow}:${colLetter(r.column)}${r.lastRow}`;
+const addressOf = (p) => `${colLetter(p.column)}${p.firstRow}:${colLetter(p.column)}${p.lastRow}`;
+const cellCount = (side) => side.parts.reduce((n, p) => n + (p.lastRow - p.firstRow + 1), 0);
 
 function updatePreview(side) {
   const box = el(side, "preview");
   try {
-    const r = resolveRange(side);
-    box.textContent = `${r.sheet}!${addressOf(r)}  ·  ${r.lastRow - r.firstRow + 1} rows`;
+    const r = resolveSide(side);
+    box.textContent = `${r.sheet}!${r.parts.map(addressOf).join(", ")}  ·  ${cellCount(r)} cells`;
     box.classList.remove("err");
   } catch (e) {
     box.textContent = state[side].sheet ? e.message : "";
@@ -184,11 +209,12 @@ function keyOf(value, opts) {
 }
 
 /**
- * Pair the two columns off one-for-one: a value on A claims one equal value on
- * B, so three 100s on A against two on B leave the third 100 red. Returns a
- * boolean per cell on each side (null = blank, leave alone).
+ * Pair the two sides off one-for-one: a value on A claims one equal value from
+ * B's pool, so three 100s on A against two on B leave the third 100 red. Where
+ * a side spans several columns the pool spans them too — that's the either/or.
+ * Returns a boolean per cell on each side (null = blank, leave alone).
  */
-function matchColumns(valuesA, valuesB, opts) {
+function matchValues(valuesA, valuesB, opts) {
   const keysA = valuesA.map((v) => keyOf(v, opts));
   const keysB = valuesB.map((v) => keyOf(v, opts));
 
@@ -213,10 +239,10 @@ function matchColumns(valuesA, valuesB, opts) {
 /* ---------- compare + paint ---------- */
 
 async function compare() {
-  let ra, rb;
+  let sa, sb;
   try {
-    ra = resolveRange("a");
-    rb = resolveRange("b");
+    sa = resolveSide("a");
+    sb = resolveSide("b");
   } catch (e) {
     setStatus(e.message, true);
     return;
@@ -227,25 +253,25 @@ async function compare() {
   setStatus("Reading…");
   try {
     await Excel.run(async (ctx) => {
-      const wsA = ctx.workbook.worksheets.getItem(ra.sheet);
-      const wsB = ctx.workbook.worksheets.getItem(rb.sheet);
-      const rngA = wsA.getRange(addressOf(ra));
-      const rngB = wsB.getRange(addressOf(rb));
-      rngA.load("values");
-      rngB.load("values");
+      const wsA = ctx.workbook.worksheets.getItem(sa.sheet);
+      const wsB = ctx.workbook.worksheets.getItem(sb.sheet);
+      const rangesA = sa.parts.map((p) => wsA.getRange(addressOf(p)));
+      const rangesB = sb.parts.map((p) => wsB.getRange(addressOf(p)));
+      for (const r of [...rangesA, ...rangesB]) r.load("values");
       await ctx.sync();
 
-      const valuesA = rngA.values.map((row) => row[0]);
-      const valuesB = rngB.values.map((row) => row[0]);
-      const { hitA, hitB } = matchColumns(valuesA, valuesB, opts);
+      // Every column of a side flattens into one pool, in part order; the hits
+      // come back in that same order and are handed back out to the parts.
+      const flatten = (ranges) => [].concat(...ranges.map((r) => r.values.map((row) => row[0])));
+      const { hitA, hitB } = matchValues(flatten(rangesA), flatten(rangesB), opts);
 
       setStatus("Colouring…");
-      paintColumn(wsA, ra, hitA);
-      paintColumn(wsB, rb, hitB);
+      paintSide(wsA, sa, hitA);
+      paintSide(wsB, sb, hitB);
       await ctx.sync();
     });
 
-    lastPainted = [ra, rb];
+    lastPainted = [sa, sb];
     setStatus("Done.");
   } catch (e) {
     setStatus("Error: " + e.message, true);
@@ -258,21 +284,27 @@ async function compare() {
 const AREAS_PER_CALL = 50;
 
 /**
- * Fill the cells of one column. Consecutive rows of the same colour are merged
+ * Fill the cells of one side. Consecutive rows of the same colour are merged
  * into runs, and the runs of a colour go in as one multi-area call where the
  * host supports it, so a thousand-row column is a few operations.
  */
-function paintColumn(ws, range, hits) {
+function paintSide(ws, side, hits) {
   const runs = { [GREEN]: [], [RED]: [] };
-  let i = 0;
-  while (i < hits.length) {
-    const hit = hits[i];
-    if (hit === null) { i++; continue; }
-    let j = i;
-    while (j + 1 < hits.length && hits[j + 1] === hit) j++;
-    const letter = colLetter(range.column);
-    runs[hit ? GREEN : RED].push(`${letter}${range.firstRow + i}:${letter}${range.firstRow + j}`);
-    i = j + 1;
+  let offset = 0;
+  for (const p of side.parts) {
+    const n = p.lastRow - p.firstRow + 1;
+    const mine = hits.slice(offset, offset + n);
+    offset += n;
+    const letter = colLetter(p.column);
+    let i = 0;
+    while (i < mine.length) {
+      const hit = mine[i];
+      if (hit === null) { i++; continue; }
+      let j = i;
+      while (j + 1 < mine.length && mine[j + 1] === hit) j++;
+      runs[hit ? GREEN : RED].push(`${letter}${p.firstRow + i}:${letter}${p.firstRow + j}`);
+      i = j + 1;
+    }
   }
 
   const multi = supports("1.9");
@@ -296,17 +328,18 @@ function supports(version) {
 // Undo: clear the fill on exactly the ranges the last Compare painted (or, if
 // there hasn't been one this session, on the ranges currently picked).
 async function clearColours() {
-  let ranges = lastPainted;
-  if (!ranges.length) {
-    try { ranges = [resolveRange("a"), resolveRange("b")]; }
+  let sides = lastPainted;
+  if (!sides.length) {
+    try { sides = [resolveSide("a"), resolveSide("b")]; }
     catch (e) { setStatus(e.message, true); return; }
   }
   $("clear-colours").disabled = true;
   setStatus("Clearing…");
   try {
     await Excel.run(async (ctx) => {
-      for (const r of ranges) {
-        ctx.workbook.worksheets.getItem(r.sheet).getRange(addressOf(r)).format.fill.clear();
+      for (const side of sides) {
+        const ws = ctx.workbook.worksheets.getItem(side.sheet);
+        for (const p of side.parts) ws.getRange(addressOf(p)).format.fill.clear();
       }
       await ctx.sync();
     });
