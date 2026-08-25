@@ -226,7 +226,6 @@ async function compare() {
   $("compare").disabled = true;
   setStatus("Reading…");
   try {
-    let counts;
     await Excel.run(async (ctx) => {
       const wsA = ctx.workbook.worksheets.getItem(ra.sheet);
       const wsB = ctx.workbook.worksheets.getItem(rb.sheet);
@@ -244,17 +243,9 @@ async function compare() {
       paintColumn(wsA, ra, hitA);
       paintColumn(wsB, rb, hitB);
       await ctx.sync();
-
-      const tally = (hits) => ({
-        green: hits.filter((h) => h === true).length,
-        red: hits.filter((h) => h === false).length,
-        blank: hits.filter((h) => h === null).length,
-      });
-      counts = { a: tally(hitA), b: tally(hitB) };
     });
 
     lastPainted = [ra, rb];
-    showSummary(counts, ra, rb);
     setStatus("Done.");
   } catch (e) {
     setStatus("Error: " + e.message, true);
@@ -320,23 +311,9 @@ async function clearColours() {
       await ctx.sync();
     });
     setStatus("Colours cleared.");
-    $("summary").classList.add("hidden");
   } catch (e) {
     setStatus("Error: " + e.message, true);
   } finally {
     $("clear-colours").disabled = false;
   }
-}
-
-/* ---------- summary ---------- */
-
-function showSummary(counts, ra, rb) {
-  const line = (label, range, c) =>
-    `<div class="tally"><span class="who">${escapeHtml(label)}</span>` +
-    `<span class="ref">${escapeHtml(range.sheet + "!" + addressOf(range))}</span>` +
-    `<span class="n green">${c.green}</span>` +
-    `<span class="n red">${c.red}</span></div>`;
-
-  $("summary").innerHTML = line("A", ra, counts.a) + line("B", rb, counts.b);
-  $("summary").classList.remove("hidden");
 }
