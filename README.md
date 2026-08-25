@@ -15,22 +15,29 @@ Everything runs locally in Excel. **No data leaves your machine** — the hostin
 ## Using it
 
 1. **Home ▸ Reconcile** to open the pane.
-2. **Side A**: pick the sheet and the column (e.g. `Sheet1`, column `E`).
+2. **Fastest way — select the cells.** Highlight the cells you want on the
+   sheet, click **Use selected cells** under Side A, then highlight the second
+   lot of cells (any sheet) and click **Use selected cells** under Side B. Each
+   button fills in that side's sheet, column(s) and row range from the
+   selection — ctrl-click several blocks and they all come across, and a whole
+   selected column is trimmed to the used rows. Everything it fills in can
+   still be edited by hand afterwards. Or set it up manually:
+3. **Side A**: pick the sheet and the column (e.g. `Sheet1`, column `E`).
    **Side B**: pick the other sheet and column (e.g. `Sheet3`, column `F`).
    Either side can take **more than one column** — ctrl-click them. The columns
    of a side are pooled, so a value on A counts as found if it turns up in
    *any* of side B's columns (e.g. `E` on one sheet against `F` **or** `H` on
    the other).
-3. Optionally **limit the rows** on either side. The box takes
+4. Optionally **limit the rows** on either side. The box takes
    `B12:B25` (column *and* rows — the column overrides the picker),
    `12:25` (rows only, applied to every picked column), or `B` / `B:B` (whole
    column). Separate several pieces with commas — `F12:F25, H12:H25`.
    Leave it blank to use the whole used column. The line under each side always
    shows the exact range that will be read.
-4. Options:
+5. Options:
    - **Ignore + / −** — `-100` matches `100` (on by default).
    - **Ignore case & spacing** — for text values.
-5. Click **Compare**. Every non-blank cell in both ranges is filled:
+6. Click **Compare**. Every non-blank cell in both ranges is filled:
    - 🟩 found on the other side,
    - 🟥 not found.
 

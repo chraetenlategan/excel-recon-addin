@@ -41,6 +41,7 @@ Office.onReady((info) => {
     el(side, "sheet").onchange = () => { state[side].sheet = el(side, "sheet").value; loadColumns(side); };
     el(side, "column").onchange = () => { state[side].columns = pickedColumns(side); updatePreview(side); };
     el(side, "limit").oninput = () => { state[side].limit = el(side, "limit").value; updatePreview(side); };
+    el(side, "use-selection").onclick = () => useSelection(side);
   }
   $("refresh-sheets").onclick = loadSheetList;
   $("compare").onclick = compare;
@@ -119,6 +120,132 @@ async function loadColumns(side) {
     setStatus("Could not read “" + s.sheet + "”: " + e.message, true);
   }
   updatePreview(side);
+}
+
+/* ---------- "Use selected cells" ---------- */
+
+/**
+ * Fill one side in from whatever the user has highlighted in Excel: highlight
+ * the cells for side A, press its button, highlight the cells for side B,
+ * press its button, then Compare.
+ *
+ * The selection sets the sheet, the column picker and the limit box, so the
+ * result is exactly as if it had been typed in by hand — and can still be
+ * edited afterwards. A multi-column or multi-area selection becomes an
+ * either/or pool, the same as ctrl-clicking several columns.
+ */
+async function useSelection(side) {
+  const btn = el(side, "use-selection");
+  btn.disabled = true;
+  try {
+    let address = "";
+    await Excel.run(async (ctx) => {
+      // getSelectedRanges() carries every area of a ctrl-click selection;
+      // older hosts only offer the single-area getSelectedRange().
+      const sel = supports("1.9")
+        ? ctx.workbook.getSelectedRanges()
+        : ctx.workbook.getSelectedRange();
+      sel.load("address");
+      await ctx.sync();
+      address = sel.address;
+    });
+
+    const { sheet, areas } = parseSelection(address);
+    if (!areas.length) throw new Error("select some cells in Excel first.");
+
+    const sel = el(side, "sheet");
+    if (sheet && ![...sel.options].some((o) => o.value === sheet)) await loadSheetList();
+    if (sheet) { sel.value = sheet; state[side].sheet = sheet; }
+    await loadColumns(side);
+
+    const columns = [...new Set(areas.map((a) => a.column))].sort((x, y) => x - y);
+    state[side].columns = columns;
+    for (const opt of el(side, "column").options) opt.selected = columns.includes(parseInt(opt.value, 10));
+
+    const limit = areas.map((a) => selectionToken(a, state[side].used)).join(", ");
+    el(side, "limit").value = limit;
+    state[side].limit = limit;
+    updatePreview(side);
+    setStatus(`Side ${side.toUpperCase()} set to ${state[side].sheet}!${limit}`);
+  } catch (e) {
+    setStatus("Could not use the selection: " + e.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/**
+ * Split a selection address — "Sheet1!B12:B25", or several areas as
+ * "'My Book'!B2:D9,'My Book'!F2:F9" — into a sheet name plus one
+ * { column, firstRow, lastRow } per column covered. Rows are null where the
+ * whole column is selected.
+ */
+function parseSelection(address) {
+  let sheet = "";
+  const areas = [];
+  for (const piece of splitAreas(String(address || ""))) {
+    let ref = piece;
+    const bang = ref.lastIndexOf("!");
+    if (bang >= 0) {
+      let name = ref.slice(0, bang);
+      ref = ref.slice(bang + 1);
+      if (name.startsWith("'") && name.endsWith("'")) name = name.slice(1, -1).replace(/''/g, "'");
+      if (!sheet) sheet = name;
+    }
+    areas.push(...refToAreas(ref.replace(/\$/g, "").trim().toUpperCase()));
+  }
+  return { sheet, areas };
+}
+
+// Areas are comma-separated, but a quoted sheet name may itself hold a comma
+// ('Jan, Feb'!A1:A9), so only commas outside the quotes split.
+function splitAreas(address) {
+  const out = [];
+  let cur = "", quoted = false;
+  for (const ch of address) {
+    if (ch === "'") quoted = !quoted;
+    if (ch === "," && !quoted) { out.push(cur); cur = ""; continue; }
+    cur += ch;
+  }
+  out.push(cur);
+  return out.map((t) => t.trim()).filter(Boolean);
+}
+
+// One A1 area -> one entry per column it covers, so a block like "B2:D9"
+// becomes B, C and D over rows 2-9.
+function refToAreas(ref) {
+  const [start, end = start] = ref.split(":");
+  const s = start.match(/^([A-Z]{1,3})?(\d+)?$/);
+  const e = end.match(/^([A-Z]{1,3})?(\d+)?$/);
+  if (!s || !e) return [];
+  const [, c1, r1] = s;
+  const [, c2, r2] = e;
+  if (!c1 || !c2) return [];                       // whole rows carry no column
+  const rows = r1 && r2
+    ? { firstRow: Math.min(+r1, +r2), lastRow: Math.max(+r1, +r2) }
+    : { firstRow: null, lastRow: null };
+  const out = [];
+  for (let c = Math.min(colIndex(c1), colIndex(c2)); c <= Math.max(colIndex(c1), colIndex(c2)); c++) {
+    out.push({ column: c, ...rows });
+  }
+  return out;
+}
+
+/**
+ * Render one selected area as a limit-box token, trimmed to the sheet's used
+ * range — clicking a column header selects a million rows, and there's no
+ * sense reading past the data.
+ */
+function selectionToken(area, used) {
+  const letter = colLetter(area.column);
+  let { firstRow, lastRow } = area;
+  if (firstRow === null) return letter;
+  if (used) {
+    firstRow = Math.max(firstRow, used.row + 1);
+    lastRow = Math.min(lastRow, used.row + used.rows);
+    if (lastRow < firstRow) return letter;         // selection misses the data
+  }
+  return `${letter}${firstRow}:${letter}${lastRow}`;
 }
 
 /* ---------- the row limiter ---------- */

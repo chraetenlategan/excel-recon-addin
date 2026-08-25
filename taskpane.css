@@ -96,3 +96,13 @@ button.icon:hover { background: #f3f2f1; }
 .side .hint { font-weight: 400; color: var(--muted); font-size: 11px; }
 .side .range { margin: 0 0 8px; font-size: 11px; color: var(--muted); min-height: 14px; }
 .side .range.err { color: #a4262c; }
+
+/* "Use selected cells" — fills a side in from whatever is highlighted in Excel */
+button.use-sel {
+  width: 100%; margin: 0 0 8px; padding: 5px;
+  font: inherit; font-size: 12px; font-weight: 600;
+  color: var(--accent-dark); background: #f3f9f5;
+  border: 1px solid var(--line); border-radius: 3px; cursor: pointer;
+}
+button.use-sel:hover:not(:disabled) { background: #e8f3ec; }
+button.use-sel:disabled { color: #c8c6c4; cursor: not-allowed; }
