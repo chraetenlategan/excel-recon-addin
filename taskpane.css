@@ -113,8 +113,27 @@ button.use-sel:disabled { color: #c8c6c4; cursor: not-allowed; }
 .cr-hint { margin: 0 0 10px; font-size: 11px; color: var(--muted); }
 .cr .side { margin-bottom: 10px; }
 .cr .side:last-of-type { margin-bottom: 12px; }
-label.swatch { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.swatches { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.chip { display: flex; align-items: center; gap: 2px; }
+.chip button {
+  width: 16px; height: 26px; padding: 0; flex: none;
+  font: inherit; font-size: 12px; line-height: 1; color: var(--muted);
+  background: none; border: 0; cursor: pointer;
+}
+.chip button:hover { color: #a4262c; }
+.chip.only button { visibility: hidden; }
+.cr .row { margin-bottom: 8px; }
+.cr .use-sel { margin: 0; }
 input[type="color"] {
   width: 44px; height: 26px; padding: 1px; margin-top: 0;
   border: 1px solid var(--line); border-radius: 3px; background: #fff; cursor: pointer;
 }
+
+/* the optional matching rules */
+.rules { margin: 8px 0 4px; font-size: 12px; }
+.rules summary { color: var(--muted); cursor: pointer; margin-bottom: 6px; }
+.rules summary:hover { color: var(--fg); }
+.rules .num { font-weight: 400; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.rules .num input { width: 70px; margin-top: 0; flex: none; }
+.cr-label { margin: 0 0 4px; font-size: 12px; font-weight: 600; }
+.cr-label .hint { font-weight: 400; color: var(--muted); font-size: 11px; }

@@ -321,48 +321,111 @@ function updatePreview(side) {
 /* ---------- matching ---------- */
 
 /**
- * The comparison key for one cell. Numbers compare as numbers (rounded to
- * cents, optionally unsigned); anything else compares as text. Blank cells
+ * Every matching rule the pane offers, read off the checkboxes once per run and
+ * handed to keyOf()/matchValues(). Both the column compare and the colour recon
+ * use the same set, so a rule you tick applies to whichever you press.
+ */
+function readOpts() {
+  const num = (id) => {
+    const v = parseFloat($(id).value);
+    return isFinite(v) && v > 0 ? v : 0;
+  };
+  return {
+    ignoreSign: $("ignore-sign").checked,
+    ignoreCase: $("ignore-case").checked,
+    roundWhole: $("round-whole").checked,
+    ignorePunct: $("ignore-punct").checked,
+    ignoreZeros: $("ignore-zeros").checked,
+    tolerance: num("tolerance"),
+    firstChars: Math.round(num("first-chars")),
+  };
+}
+
+/**
+ * The comparison key for one cell. Numbers compare as numbers (in cents, so
+ * 100 and 100.00 are one value); anything else compares as text. Blank cells
  * return null and are skipped entirely — never coloured, never matched.
+ *
+ * The rules bend the key before it is compared: dropping the sign, the cents,
+ * the case, the punctuation, the leading zeros, or everything past the first
+ * few characters. A tolerance is *not* a key rule — near numbers can't share a
+ * key — and is handled by matchValues() instead.
  */
 function keyOf(value, opts) {
   const n = _amount(value);
   if (n !== null) {
-    const v = opts.ignoreSign ? Math.abs(n) : n;
+    let v = opts.ignoreSign ? Math.abs(n) : n;
+    if (opts.roundWhole) v = Math.round(v);
     return "n:" + Math.round(v * 100);
   }
   let t = _text(value);
   if (!t) return null;
   if (opts.ignoreCase) t = t.toLowerCase().replace(/\s+/g, " ");
+  if (opts.ignorePunct) t = t.replace(/[^\p{L}\p{N}]+/gu, "");
+  // "INV-00123" -> "INV-123": zeros that open a run of digits, not zeros
+  // sitting inside a number ("1004" is left alone).
+  if (opts.ignoreZeros) t = t.replace(/(^|[^\p{N}])0+(?=\p{N})/gu, "$1");
+  t = t.trim();
+  if (!t) return null;
+  if (opts.firstChars) t = t.slice(0, opts.firstChars);
   return "t:" + t;
 }
+
+const _cents = (key) => (key !== null && key.startsWith("n:") ? parseInt(key.slice(2), 10) : null);
 
 /**
  * Pair the two sides off one-for-one: a value on A claims one equal value from
  * B's pool, so three 100s on A against two on B leave the third 100 red. Where
- * a side spans several columns the pool spans them too — that's the either/or.
- * Returns a boolean per cell on each side (null = blank, leave alone).
+ * a side spans several columns (or several colours) the pool spans them too —
+ * that's the either/or.
+ *
+ * Returns a boolean per cell on each side (null = blank, leave alone) plus
+ * pairA: for each A cell, the index of the B cell it claimed, or -1.
  */
 function matchValues(valuesA, valuesB, opts) {
   const keysA = valuesA.map((v) => keyOf(v, opts));
   const keysB = valuesB.map((v) => keyOf(v, opts));
+  const tol = Math.round((opts.tolerance || 0) * 100);
 
-  const pool = new Map();
-  keysB.forEach((k, i) => {
-    if (k === null) return;
-    if (!pool.has(k)) pool.set(k, []);
-    pool.get(k).push(i);
-  });
-
+  const hitA = keysA.map((k) => (k === null ? null : false));
   const hitB = keysB.map((k) => (k === null ? null : false));
-  const hitA = keysA.map((k) => {
-    if (k === null) return null;
-    const queue = pool.get(k);
-    if (!queue || !queue.length) return false;
-    hitB[queue.shift()] = true;
-    return true;
+  const pairA = keysA.map(() => -1);
+  const claim = (i, j) => { hitA[i] = true; hitB[j] = true; pairA[i] = j; };
+
+  // Exact keys go through a pool, one queue per key. With a tolerance set the
+  // numbers are held back for the sweep below and only text pools here.
+  const pool = new Map();
+  keysB.forEach((k, j) => {
+    if (k === null) return;
+    if (tol > 0 && _cents(k) !== null) return;
+    if (!pool.has(k)) pool.set(k, []);
+    pool.get(k).push(j);
   });
-  return { hitA, hitB };
+  keysA.forEach((k, i) => {
+    if (k === null) return;
+    if (tol > 0 && _cents(k) !== null) return;
+    const queue = pool.get(k);
+    if (queue && queue.length) claim(i, queue.shift());
+  });
+
+  // Tolerance: an amount matches anything within ± of it. Both sides are walked
+  // in ascending order and each A takes the smallest B still in reach, which
+  // pairs off as many rows as can be paired.
+  if (tol > 0) {
+    const numbered = (keys) => keys
+      .map((k, i) => ({ i, cents: _cents(k) }))
+      .filter((e) => e.cents !== null)
+      .sort((x, y) => x.cents - y.cents);
+    const numA = numbered(keysA);
+    const numB = numbered(keysB);
+    let j = 0;
+    for (const a of numA) {
+      while (j < numB.length && numB[j].cents < a.cents - tol) j++;
+      if (j < numB.length && numB[j].cents <= a.cents + tol) claim(a.i, numB[j++].i);
+    }
+  }
+
+  return { hitA, hitB, pairA };
 }
 
 /* ---------- compare + paint ---------- */
@@ -376,7 +439,7 @@ async function compare() {
     setStatus(e.message, true);
     return;
   }
-  const opts = { ignoreSign: $("ignore-sign").checked, ignoreCase: $("ignore-case").checked };
+  const opts = readOpts();
 
   $("compare").disabled = true;
   setStatus("Reading…");
