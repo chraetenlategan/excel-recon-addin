@@ -54,6 +54,37 @@
       <button id="clear-colours" class="link">Clear colours</button>
     </section>
 
+
+    <section class="cr" id="colour-recon">
+      <h2>Colour recon</h2>
+      <p class="cr-hint">Fill the cells you want checked with a colour on each sheet, say which colour to look for, and every filled cell goes green (matched) or red (not found on the other side).</p>
+
+      <div class="side" id="cr-a">
+        <h3>Side A</h3>
+        <label>Sheet
+          <select data-k="sheet"></select>
+        </label>
+        <label class="swatch">Colour
+          <input type="color" data-k="colour" value="#00B0F0" />
+        </label>
+        <button class="use-sel" data-k="pick">Use selected cell&rsquo;s colour</button>
+      </div>
+
+      <div class="side" id="cr-b">
+        <h3>Side B</h3>
+        <label>Sheet
+          <select data-k="sheet"></select>
+        </label>
+        <label class="swatch">Colour
+          <input type="color" data-k="colour" value="#00B0F0" />
+        </label>
+        <button class="use-sel" data-k="pick">Use selected cell&rsquo;s colour</button>
+      </div>
+
+      <button id="cr-run" class="primary">Recon colours</button>
+      <p class="cr-hint">Uses the two options above (ignore sign, ignore case). The green/red fill replaces the colour you marked with, so mark again before a second pass.</p>
+    </section>
+
     <p id="status" class="status"></p>
   </main>
 
@@ -66,6 +97,7 @@
   <script src="comparison.js"></script>
   <script src="sheets.js"></script>
   <script src="functions.js"></script>
+  <script src="colourrecon.js"></script>
   <script src="taskpane.js"></script>
 </body>
 </html>

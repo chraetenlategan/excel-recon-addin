@@ -106,3 +106,15 @@ button.use-sel {
 }
 button.use-sel:hover:not(:disabled) { background: #e8f3ec; }
 button.use-sel:disabled { color: #c8c6c4; cursor: not-allowed; }
+
+/* colour recon — pick the cells by their fill instead of by range */
+.cr { border-top: 1px solid var(--line); padding-top: 12px; }
+.cr h2 { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: var(--accent-dark); }
+.cr-hint { margin: 0 0 10px; font-size: 11px; color: var(--muted); }
+.cr .side { margin-bottom: 10px; }
+.cr .side:last-of-type { margin-bottom: 12px; }
+label.swatch { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+input[type="color"] {
+  width: 44px; height: 26px; padding: 1px; margin-top: 0;
+  border: 1px solid var(--line); border-radius: 3px; background: #fff; cursor: pointer;
+}

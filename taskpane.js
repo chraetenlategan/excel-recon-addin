@@ -46,6 +46,7 @@ Office.onReady((info) => {
   $("refresh-sheets").onclick = loadSheetList;
   $("compare").onclick = compare;
   $("clear-colours").onclick = clearColours;
+  initColourRecon();
   loadSheetList();
 });
 
@@ -78,6 +79,7 @@ async function loadSheetList() {
         sel.value = names.includes(keep) ? keep : (fallback || "");
         state[side].sheet = sel.value;
       }
+      crSetSheets(names);
     });
     for (const side of ["a", "b"]) await loadColumns(side);
     setStatus("");
