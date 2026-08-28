@@ -43,12 +43,21 @@ Office.onReady((info) => {
     el(side, "limit").oninput = () => { state[side].limit = el(side, "limit").value; updatePreview(side); };
     el(side, "use-selection").onclick = () => useSelection(side);
   }
+  for (const tab of document.querySelectorAll(".tab")) tab.onclick = () => showTab(tab.dataset.tab);
   $("refresh-sheets").onclick = loadSheetList;
   $("compare").onclick = compare;
   $("clear-colours").onclick = clearColours;
   initColourRecon();
   loadSheetList();
 });
+
+// Two tools, one pane: the colour recon and the column compare each get a tab,
+// and the matching rules underneath belong to whichever is showing.
+function showTab(name) {
+  for (const tab of document.querySelectorAll(".tab")) tab.classList.toggle("active", tab.dataset.tab === name);
+  for (const panel of document.querySelectorAll(".panel")) panel.classList.toggle("hidden", panel.id !== "tab-" + name);
+  setStatus("");
+}
 
 const el = (side, key) => document.querySelector(`#side-${side} [data-k="${key}"]`);
 const pickedColumns = (side) =>
@@ -371,7 +380,7 @@ function keyOf(value, opts) {
   return "t:" + t;
 }
 
-const _cents = (key) => (key !== null && key.startsWith("n:") ? parseInt(key.slice(2), 10) : null);
+const _keyCents = (key) => (key !== null && key.startsWith("n:") ? parseInt(key.slice(2), 10) : null);
 
 /**
  * Pair the two sides off one-for-one: a value on A claims one equal value from
@@ -397,13 +406,13 @@ function matchValues(valuesA, valuesB, opts) {
   const pool = new Map();
   keysB.forEach((k, j) => {
     if (k === null) return;
-    if (tol > 0 && _cents(k) !== null) return;
+    if (tol > 0 && _keyCents(k) !== null) return;
     if (!pool.has(k)) pool.set(k, []);
     pool.get(k).push(j);
   });
   keysA.forEach((k, i) => {
     if (k === null) return;
-    if (tol > 0 && _cents(k) !== null) return;
+    if (tol > 0 && _keyCents(k) !== null) return;
     const queue = pool.get(k);
     if (queue && queue.length) claim(i, queue.shift());
   });
@@ -413,7 +422,7 @@ function matchValues(valuesA, valuesB, opts) {
   // pairs off as many rows as can be paired.
   if (tol > 0) {
     const numbered = (keys) => keys
-      .map((k, i) => ({ i, cents: _cents(k) }))
+      .map((k, i) => ({ i, cents: _keyCents(k) }))
       .filter((e) => e.cents !== null)
       .sort((x, y) => x.cents - y.cents);
     const numA = numbered(keysA);
@@ -426,6 +435,61 @@ function matchValues(valuesA, valuesB, opts) {
   }
 
   return { hitA, hitB, pairA };
+}
+
+/**
+ * Row-level matching, for an AND of several colour rules: a row is a list of
+ * values — one per rule — and two rows only match when *every* one of those
+ * values matches. That is what makes "blue AND purple" mean "on the same row":
+ * the blue cell and the purple cell of a row on side A must both find their
+ * partner on one single row of side B.
+ *
+ * A row with a blank in any of its rules can never match — there is nothing to
+ * compare on that rule — so it comes back red.
+ *
+ * Rows are paired one-for-one, like matchValues(). Exact keys go in a bucket
+ * map; where a tolerance is set the numbers can't be hashed, so they are
+ * checked inside the bucket their exact parts land in.
+ */
+function matchRows(rowsA, rowsB, opts) {
+  const tol = Math.round((opts.tolerance || 0) * 100);
+  const prep = (row) => {
+    const exact = [], near = [];
+    for (const value of row) {
+      const key = keyOf(value, opts);
+      if (key === null) return null;
+      const cents = _keyCents(key);
+      if (tol > 0 && cents !== null) near.push(cents);
+      else exact.push(key);
+    }
+    return { exact: exact.join(""), near };
+  };
+
+  const prepA = rowsA.map(prep);
+  const prepB = rowsB.map(prep);
+  const buckets = new Map();
+  prepB.forEach((p, j) => {
+    if (!p) return;
+    if (!buckets.has(p.exact)) buckets.set(p.exact, []);
+    buckets.get(p.exact).push(j);
+  });
+
+  const hitA = rowsA.map(() => false);
+  const hitB = rowsB.map(() => false);
+  prepA.forEach((p, i) => {
+    if (!p) return;
+    const bucket = buckets.get(p.exact);
+    if (!bucket) return;
+    for (let n = 0; n < bucket.length; n++) {
+      const j = bucket[n];
+      if (!p.near.every((c, k) => Math.abs(c - prepB[j].near[k]) <= tol)) continue;
+      bucket.splice(n, 1);
+      hitA[i] = true;
+      hitB[j] = true;
+      return;
+    }
+  });
+  return { hitA, hitB };
 }
 
 /* ---------- compare + paint ---------- */

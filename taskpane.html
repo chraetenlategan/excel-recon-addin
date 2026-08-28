@@ -10,40 +10,62 @@
 </head>
 <body>
   <header>
-    <h1>Compare columns</h1>
+    <h1>Compare</h1>
+    <button id="refresh-sheets" class="icon" title="Refresh sheet list" aria-label="Refresh sheet list">↻</button>
   </header>
 
+  <nav class="tabs" role="tablist">
+    <button class="tab active" data-tab="colour" role="tab">Colour recon</button>
+    <button class="tab" data-tab="columns" role="tab">Columns</button>
+  </nav>
+
   <main>
-    <section class="side" id="side-a">
-      <h3>Side A</h3>
-      <label>Sheet
-        <select data-k="sheet"></select>
-      </label>
-      <label>Column(s) <span class="hint">ctrl-click for several — a value counts as found if it's in any of them</span>
-        <select data-k="column" multiple size="4"></select>
-      </label>
-      <label>Limit to range <span class="hint">optional — e.g. B12:B25, or 12:25, or F12:F25, H12:H25</span>
-        <input type="text" data-k="limit" placeholder="whole column" />
-      </label>
-      <button class="use-sel" data-k="use-selection">Use selected cells</button>
-      <p class="range" data-k="preview"></p>
-    </section>
+    <!-- ---------- colour recon ---------- -->
+    <div class="panel" id="tab-colour">
+      <p class="hint block">Colour the cells you want checked, then add one rule per colour. Matched cells go green, unmatched go red.</p>
 
-    <section class="side" id="side-b">
-      <h3>Side B</h3>
-      <label>Sheet
-        <select data-k="sheet"></select>
-      </label>
-      <label>Column(s) <span class="hint">ctrl-click for several — a value counts as found if it's in any of them</span>
-        <select data-k="column" multiple size="4"></select>
-      </label>
-      <label>Limit to range <span class="hint">optional — e.g. B12:B25, or 12:25, or F12:F25, H12:H25</span>
-        <input type="text" data-k="limit" placeholder="whole column" />
-      </label>
-      <button class="use-sel" data-k="use-selection">Use selected cells</button>
-      <p class="range" data-k="preview"></p>
-    </section>
+      <div id="cr-rules"></div>
 
+      <button id="cr-add" class="link add">+ Add another colour rule</button>
+      <button id="cr-run" class="primary">Recon colours</button>
+    </div>
+
+    <!-- ---------- column compare ---------- -->
+    <div class="panel hidden" id="tab-columns">
+      <section class="side" id="side-a">
+        <h3>Side A</h3>
+        <label>Sheet
+          <select data-k="sheet"></select>
+        </label>
+        <label>Column(s) <span class="hint">ctrl-click for several — a value counts as found if it's in any of them</span>
+          <select data-k="column" multiple size="4"></select>
+        </label>
+        <label>Limit to range <span class="hint">optional — e.g. B12:B25, or 12:25, or F12:F25, H12:H25</span>
+          <input type="text" data-k="limit" placeholder="whole column" />
+        </label>
+        <button class="use-sel" data-k="use-selection">Use selected cells</button>
+        <p class="range" data-k="preview"></p>
+      </section>
+
+      <section class="side" id="side-b">
+        <h3>Side B</h3>
+        <label>Sheet
+          <select data-k="sheet"></select>
+        </label>
+        <label>Column(s) <span class="hint">ctrl-click for several — a value counts as found if it's in any of them</span>
+          <select data-k="column" multiple size="4"></select>
+        </label>
+        <label>Limit to range <span class="hint">optional — e.g. B12:B25, or 12:25, or F12:F25, H12:H25</span>
+          <input type="text" data-k="limit" placeholder="whole column" />
+        </label>
+        <button class="use-sel" data-k="use-selection">Use selected cells</button>
+        <p class="range" data-k="preview"></p>
+      </section>
+
+      <button id="compare" class="primary">Compare</button>
+    </div>
+
+    <!-- ---------- matching rules, shared by both tabs ---------- -->
     <section class="opts">
       <label class="check"><input type="checkbox" id="ignore-sign" checked /> Ignore + / − (treat −100 as 100)</label>
       <label class="check"><input type="checkbox" id="ignore-case" checked /> Ignore case &amp; spacing on text</label>
@@ -59,53 +81,7 @@
           <input type="number" id="first-chars" min="0" step="1" value="0" placeholder="0 = all" />
         </label>
       </details>
-      <div class="row">
-        <button id="compare" class="primary">Compare</button>
-        <button id="refresh-sheets" class="icon" title="Refresh sheet list" aria-label="Refresh sheet list">↻</button>
-      </div>
       <button id="clear-colours" class="link">Clear colours</button>
-    </section>
-
-
-    <section class="cr" id="colour-recon">
-      <h2>Colour recon</h2>
-      <p class="cr-hint">Fill the cells you want checked with a colour on each sheet, say which colours to look for, and every filled cell goes green (matched) or red (not found on the other side). Several colours a side are allowed &mdash; the rule below says how they combine.</p>
-
-      <div class="side" id="cr-a">
-        <h3>Side A</h3>
-        <label>Sheet
-          <select data-k="sheet"></select>
-        </label>
-        <p class="cr-label">Colours <span class="hint">+ adds another</span></p>
-        <div class="swatches" data-k="colours"></div>
-        <div class="row">
-          <button class="use-sel" data-k="pick">Use selected cell&rsquo;s colour</button>
-          <button class="icon" data-k="add" title="Add another colour" aria-label="Add another colour">+</button>
-        </div>
-      </div>
-
-      <div class="side" id="cr-b">
-        <h3>Side B</h3>
-        <label>Sheet
-          <select data-k="sheet"></select>
-        </label>
-        <p class="cr-label">Colours <span class="hint">+ adds another</span></p>
-        <div class="swatches" data-k="colours"></div>
-        <div class="row">
-          <button class="use-sel" data-k="pick">Use selected cell&rsquo;s colour</button>
-          <button class="icon" data-k="add" title="Add another colour" aria-label="Add another colour">+</button>
-        </div>
-      </div>
-
-      <label>When a side has several colours
-        <select id="cr-mode">
-          <option value="any">Any of them (OR) &mdash; pool the colours together</option>
-          <option value="all">All of them (AND) &mdash; must be found in every colour</option>
-          <option value="pair">Colour by colour &mdash; 1st with 1st, 2nd with 2nd</option>
-        </select>
-      </label>
-      <button id="cr-run" class="primary">Recon colours</button>
-      <p class="cr-hint">Uses the two options above (ignore sign, ignore case). The green/red fill replaces the colour you marked with, so mark again before a second pass.</p>
     </section>
 
     <p id="status" class="status"></p>

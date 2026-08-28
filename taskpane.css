@@ -107,33 +107,60 @@ button.use-sel {
 button.use-sel:hover:not(:disabled) { background: #e8f3ec; }
 button.use-sel:disabled { color: #c8c6c4; cursor: not-allowed; }
 
-/* colour recon — pick the cells by their fill instead of by range */
-.cr { border-top: 1px solid var(--line); padding-top: 12px; }
-.cr h2 { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: var(--accent-dark); }
-.cr-hint { margin: 0 0 10px; font-size: 11px; color: var(--muted); }
-.cr .side { margin-bottom: 10px; }
-.cr .side:last-of-type { margin-bottom: 12px; }
-.swatches { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
-.chip { display: flex; align-items: center; gap: 2px; }
-.chip button {
-  width: 16px; height: 26px; padding: 0; flex: none;
-  font: inherit; font-size: 12px; line-height: 1; color: var(--muted);
-  background: none; border: 0; cursor: pointer;
+/* tabs — colour recon on one, the column compare on the other */
+header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+.tabs { display: flex; border-bottom: 1px solid var(--line); }
+.tab {
+  flex: 1; padding: 9px 6px;
+  font: inherit; font-size: 12px; font-weight: 600; color: var(--muted);
+  background: none; border: 0; border-bottom: 2px solid transparent; cursor: pointer;
 }
-.chip button:hover { color: #a4262c; }
-.chip.only button { visibility: hidden; }
-.cr .row { margin-bottom: 8px; }
-.cr .use-sel { margin: 0; }
+.tab:hover { color: var(--fg); }
+.tab.active { color: var(--accent-dark); border-bottom-color: var(--accent); }
+.panel { margin-bottom: 4px; }
+.hint.block { display: block; margin: 0 0 12px; font-size: 11px; color: var(--muted); font-weight: 400; }
+
+/* colour recon — one rule per colour: sheet + colour, against sheet + colour */
+.rule {
+  border: 1px solid var(--line); border-radius: 3px;
+  padding: 8px 10px 10px; margin-bottom: 0;
+}
+.rule-head {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 11px; font-weight: 600; color: var(--muted); margin-bottom: 6px;
+}
+.rule-head .drop {
+  width: 18px; padding: 0; font: inherit; font-size: 13px; line-height: 1;
+  color: var(--muted); background: none; border: 0; cursor: pointer;
+}
+.rule-head .drop:hover { color: #a4262c; }
+.rule-side { display: flex; align-items: center; gap: 6px; }
+.rule-side select { flex: 1; min-width: 0; margin-top: 0; }
+.rule-mid { margin: 5px 0; font-size: 11px; color: var(--muted); text-align: center; }
+.rule-side .pick { width: 28px; height: 28px; font-size: 13px; }
+
 input[type="color"] {
-  width: 44px; height: 26px; padding: 1px; margin-top: 0;
+  width: 34px; height: 28px; padding: 1px; margin-top: 0; flex: none;
   border: 1px solid var(--line); border-radius: 3px; background: #fff; cursor: pointer;
 }
 
+/* the AND / OR between two rules */
+.join { display: flex; align-items: center; gap: 8px; padding: 6px 0 6px 10px; }
+.join-chip {
+  padding: 2px 10px; font: inherit; font-size: 11px; font-weight: 700; letter-spacing: .5px;
+  color: #fff; background: var(--muted); border: 0; border-radius: 10px; cursor: pointer;
+}
+.join.and .join-chip { background: var(--accent); }
+.join-note { font-size: 11px; color: var(--muted); }
+
+button.link.add { text-decoration: none; font-weight: 600; color: var(--accent-dark); margin: 8px 0 10px; }
+button.link.add:hover:not(:disabled) { text-decoration: underline; }
+
 /* the optional matching rules */
+.opts { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 14px; }
 .rules { margin: 8px 0 4px; font-size: 12px; }
 .rules summary { color: var(--muted); cursor: pointer; margin-bottom: 6px; }
 .rules summary:hover { color: var(--fg); }
 .rules .num { font-weight: 400; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .rules .num input { width: 70px; margin-top: 0; flex: none; }
-.cr-label { margin: 0 0 4px; font-size: 12px; font-weight: 600; }
-.cr-label .hint { font-weight: 400; color: var(--muted); font-size: 11px; }

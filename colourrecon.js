@@ -1,28 +1,26 @@
 "use strict";
 
 /**
- * colourrecon.js — "Colour recon": the same comparison as the main pane, but
+ * colourrecon.js — "Colour recon": the same comparison as the Columns tab, but
  * the user says which cells to read by colouring them in Excel instead of
  * naming ranges.
  *
- * The flow is: fill the cells you care about on one sheet with a colour (say
- * blue), fill the ones they should match on the other sheet with a colour too,
- * tell the pane "recon blue against blue", and every filled cell is repainted
- * green (matched) or red (not found on the other side).
+ * The pane shows one line per colour, reading the way it is said out loud:
  *
- * A side can carry several colours, and the mode says what that means:
+ *     Sheet1  [purple]  compare with  Sheet3  [purple]
+ *                        AND
+ *     Sheet1  [blue]    compare with  Sheet3  [blue]
  *
- *   any   (OR)  the colours pool together — a value is found if it turns up in
- *               any coloured cell on the other side. Blue *or* yellow.
- *   all   (AND) the colours are separate demands — a value is only green if it
- *               is found in every one of the other side's colours. Blue *and*
- *               yellow.
- *   pair        first colour against first colour, second against second, each
- *               pair reconciled on its own. Blue vs blue, yellow vs yellow.
+ * and the word between the rules is what they mean together:
  *
- * Matching itself is the pane's own matchValues(), with whatever rules are
- * ticked above (ignore sign, ignore cents, tolerance, and the rest), so a value
- * appearing twice on one side needs to appear twice on the other.
+ *   OR   each rule is reconciled on its own. A purple cell only cares about the
+ *        purple cells on the other sheet, and blue about blue.
+ *   AND  the rules must come true together *on the same row*: row 12's purple
+ *        and row 12's blue must both find their partner on one single row of
+ *        the other sheet. Either both cells of a row go green, or neither does.
+ *
+ * Matching itself uses the pane's own matchValues()/matchRows(), with whatever
+ * rules are ticked below (ignore sign, ignore cents, tolerance, and the rest).
  *
  * As with the rest of the add-in the only thing ever written is a cell's fill
  * colour. Note that the green/red repaint replaces the colour you marked with,
@@ -33,84 +31,146 @@
 // getCellProperties (ExcelApi 1.9) to read a whole block of fills in one call.
 const CR_CELLS_PER_CALL = 2000;
 
-const CR_DEFAULTS = ["#00B0F0", "#FFFF00", "#92D050", "#FFC000"];
+const CR_DEFAULTS = ["#7030A0", "#00B0F0", "#FFC000", "#92D050"];
 
-const crState = {
-  a: { sheet: "", colours: ["#00B0F0"] },
-  b: { sheet: "", colours: ["#00B0F0"] },
-};
+// One line of the pane: this colour on this sheet against that colour on that
+// sheet. `join` is shared by all of them — the word shown between the lines.
+let crRules = [];
+let crJoin = "or";
 
-const crEl = (side, key) => document.querySelector(`#cr-${side} [data-k="${key}"]`);
+// Sheet names as of the last refresh, so a rule added later still gets a full
+// dropdown without another trip to Excel.
+let crSheetNames = [];
 
 function initColourRecon() {
-  for (const side of ["a", "b"]) {
-    crEl(side, "sheet").onchange = () => { crState[side].sheet = crEl(side, "sheet").value; };
-    crEl(side, "add").onclick = () => crAddColour(side);
-    crEl(side, "pick").onclick = () => crPickColour(side);
-    crDrawColours(side);
-  }
+  crRules = [newRule(0)];
+  $("cr-add").onclick = () => { crRules.push(newRule(crRules.length)); crDrawRules(); };
   $("cr-run").onclick = reconColours;
+  crDrawRules();
 }
 
-// Keep the colour-recon sheet pickers in step with the main ones.
-function crSetSheets(names) {
-  for (const side of ["a", "b"]) {
-    const sel = crEl(side, "sheet");
-    const keep = crState[side].sheet;
-    sel.innerHTML = "";
-    for (const n of names) sel.appendChild(new Option(n, n));
-    const fallback = side === "a" ? names[0] : (names[1] || names[0]);
-    sel.value = names.includes(keep) ? keep : (fallback || "");
-    crState[side].sheet = sel.value;
-  }
+// A new rule lands on the same two sheets as the one above it — a second
+// colour is nearly always the same recon seen a second way — with the next
+// unused colour on both sides.
+function newRule(i) {
+  const colour = CR_DEFAULTS[i % CR_DEFAULTS.length];
+  const above = crRules[i - 1];
+  return {
+    a: { sheet: above ? above.a.sheet : (crSheetNames[0] || ""), colour },
+    b: { sheet: above ? above.b.sheet : (crSheetNames[1] || crSheetNames[0] || ""), colour },
+  };
 }
 
 const crHex = (c) => String(c || "").replace("#", "").toUpperCase();
 
-/* ---------- the colour list ---------- */
+/* ---------- the rule list ---------- */
 
-// One swatch per colour, each with an x that drops it. The last one keeps its x
-// hidden: a side always carries at least one colour.
-function crDrawColours(side) {
-  const box = crEl(side, "colours");
-  const list = crState[side].colours;
+// Remember the workbook's sheets and give every rule a sheet to point at. Side
+// A defaults to the first sheet and side B to the second, which is the usual
+// shape of a recon; anything the user has already chosen is kept.
+function crSetSheets(names) {
+  crSheetNames = names.slice();
+  for (const rule of crRules) {
+    if (!names.includes(rule.a.sheet)) rule.a.sheet = names[0] || "";
+    if (!names.includes(rule.b.sheet)) rule.b.sheet = names[1] || names[0] || "";
+  }
+  crDrawRules();
+}
+
+function crDrawRules() {
+  const box = $("cr-rules");
   box.innerHTML = "";
-  list.forEach((colour, i) => {
-    const chip = document.createElement("span");
-    chip.className = "chip" + (list.length === 1 ? " only" : "");
-
-    const swatch = document.createElement("input");
-    swatch.type = "color";
-    swatch.value = colour;
-    swatch.title = `Colour ${i + 1}`;
-    swatch.oninput = () => { list[i] = swatch.value; };
-
-    const drop = document.createElement("button");
-    drop.type = "button";
-    drop.textContent = "×";
-    drop.title = "Remove this colour";
-    drop.onclick = () => { list.splice(i, 1); crDrawColours(side); };
-
-    chip.append(swatch, drop);
-    box.appendChild(chip);
+  crRules.forEach((rule, i) => {
+    if (i > 0) box.appendChild(crJoinChip());
+    box.appendChild(crRuleCard(rule, i));
   });
 }
 
-function crAddColour(side) {
-  const list = crState[side].colours;
-  const next = CR_DEFAULTS.find((c) => !list.includes(c)) || "#FF0000";
-  list.push(next);
-  crDrawColours(side);
-  setStatus("Set the new swatch, or highlight a cell and use the colour picker button.");
+/**
+ * The AND / OR between two rules, as a chip the user can press. It also spells
+ * out what it means, because the two read very differently.
+ */
+function crJoinChip() {
+  const wrap = document.createElement("div");
+  wrap.className = "join " + crJoin;
+
+  const chip = document.createElement("button");
+  chip.type = "button";
+  chip.className = "join-chip";
+  chip.textContent = crJoin.toUpperCase();
+  chip.title = "Press to switch between AND and OR";
+  chip.onclick = () => { crJoin = crJoin === "and" ? "or" : "and"; crDrawRules(); };
+
+  const note = document.createElement("span");
+  note.className = "join-note";
+  note.textContent = crJoin === "and"
+    ? "both must match, on the same row"
+    : "each colour is checked on its own";
+
+  wrap.append(chip, note);
+  return wrap;
 }
 
-/* ---------- "Use selected cell's colour" ---------- */
+function crRuleCard(rule, i) {
+  const card = document.createElement("div");
+  card.className = "rule";
 
-// Read the fill of whatever is selected, so the user never has to match the
-// shade by eye. It fills the last swatch on that side (add one first to keep
-// the colour already there) and sets the side's sheet.
-async function crPickColour(side) {
-  const btn = crEl(side, "pick");
+  const head = document.createElement("div");
+  head.className = "rule-head";
+  const title = document.createElement("span");
+  title.textContent = "Rule " + (i + 1);
+  head.appendChild(title);
+  if (crRules.length > 1) {
+    const drop = document.createElement("button");
+    drop.type = "button";
+    drop.className = "drop";
+    drop.textContent = "×";
+    drop.title = "Remove this rule";
+    drop.onclick = () => { crRules.splice(i, 1); crDrawRules(); };
+    head.appendChild(drop);
+  }
+
+  const middle = document.createElement("p");
+  middle.className = "rule-mid";
+  middle.textContent = "compare with";
+
+  card.append(head, crRuleSide(rule, "a"), middle, crRuleSide(rule, "b"));
+  return card;
+}
+
+// "Sheet1 [swatch] ⊙" — the sheet, the colour, and a button that reads both off
+// whatever is selected in Excel.
+function crRuleSide(rule, side) {
+  const row = document.createElement("div");
+  row.className = "rule-side";
+
+  const sheet = document.createElement("select");
+  for (const n of crSheetNames) sheet.appendChild(new Option(n, n));
+  sheet.value = rule[side].sheet;
+  sheet.onchange = () => { rule[side].sheet = sheet.value; };
+
+  const swatch = document.createElement("input");
+  swatch.type = "color";
+  swatch.value = rule[side].colour;
+  swatch.title = "The colour to look for";
+  swatch.oninput = () => { rule[side].colour = swatch.value; };
+
+  const pick = document.createElement("button");
+  pick.type = "button";
+  pick.className = "icon pick";
+  pick.textContent = "⊙";
+  pick.title = "Use the selected cell's sheet and colour";
+  pick.onclick = () => crPickColour(rule, side, sheet, swatch, pick);
+
+  row.append(sheet, swatch, pick);
+  return row;
+}
+
+/* ---------- "use the selected cell" ---------- */
+
+// Read the sheet and fill of whatever is selected in Excel, so the user never
+// has to find the sheet in the list or match the shade by eye.
+async function crPickColour(rule, side, sheetSel, swatch, btn) {
   btn.disabled = true;
   try {
     let colour = "", sheet = "";
@@ -124,16 +184,15 @@ async function crPickColour(side) {
     if (!colour || crHex(colour) === "FFFFFF") {
       throw new Error("that cell has no fill — colour it first, then press this.");
     }
-    const list = crState[side].colours;
-    list[list.length - 1] = "#" + crHex(colour);
-    crDrawColours(side);
+    if (sheet && !crSheetNames.includes(sheet)) await loadSheetList();
 
-    const sel = crEl(side, "sheet");
-    if (sheet && ![...sel.options].some((o) => o.value === sheet)) await loadSheetList();
-    if (sheet) { sel.value = sheet; crState[side].sheet = sheet; }
-    setStatus(`Side ${side.toUpperCase()}: #${crHex(colour)} on ${crState[side].sheet}.`);
+    rule[side].colour = "#" + crHex(colour);
+    if (sheet) rule[side].sheet = sheet;
+    // Redraw rather than poke the two controls: the sheet list may have grown.
+    crDrawRules();
+    setStatus(`${sheet} · #${crHex(colour)}`);
   } catch (e) {
-    setStatus("Could not read the colour: " + e.message, true);
+    setStatus("Could not read the selection: " + e.message, true);
   } finally {
     btn.disabled = false;
   }
@@ -143,13 +202,13 @@ async function crPickColour(side) {
 
 /**
  * Walk `sheet`'s used range once and hand back one group per colour asked for:
- * { hex, sheet, parts, values }, in the same { sheet, parts } shape the main
- * pane uses, so paintSide() and "Clear colours" work on it unchanged. Runs of
- * consecutive coloured cells in a column become one part, and `values` lines up
- * with those parts in order.
+ * { hex, sheet, parts, values, rows }. `parts` is the same { column, firstRow,
+ * lastRow } shape the Columns tab uses — runs of consecutive coloured cells in
+ * one column — so paintSide() and "Clear colours" work on it unchanged, while
+ * `values` and `rows` line up cell by cell in that same order.
  */
 async function crFindCells(ctx, sheet, hexes) {
-  const groups = hexes.map((hex) => ({ hex, sheet, parts: [], values: [] }));
+  const groups = hexes.map((hex) => ({ hex, sheet, parts: [], values: [], rows: [] }));
   const ws = ctx.workbook.worksheets.getItem(sheet);
   const used = ws.getUsedRangeOrNullObject(true);
   used.load(["rowIndex", "columnIndex", "rowCount", "columnCount"]);
@@ -196,6 +255,7 @@ async function crFindCells(ctx, sheet, hexes) {
         groups[g].parts.push({ column, firstRow: list[i], lastRow: list[j] });
         for (let row = list[i]; row <= list[j]; row++) {
           groups[g].values.push(valueAt[g].get(column + ":" + row));
+          groups[g].rows.push(row);
         }
         i = j + 1;
       }
@@ -204,105 +264,93 @@ async function crFindCells(ctx, sheet, hexes) {
   return groups;
 }
 
-/* ---------- the three modes ---------- */
-
-// Flatten a side's groups into one pool, remembering which group each value
-// came from so the hits can be handed back out.
-function crPool(groups) {
-  const values = [];
-  const owner = [];
-  groups.forEach((g, gi) => g.values.forEach((v, i) => { values.push(v); owner.push([gi, i]); }));
-  return { values, owner };
+// Every colour a side needs on one sheet, read in a single pass, handed back as
+// "which group is rule i's colour" for that sheet.
+async function crReadSide(ctx, wants) {
+  const bySheet = new Map();
+  for (const w of wants) {
+    if (!bySheet.has(w.sheet)) bySheet.set(w.sheet, []);
+    if (!bySheet.get(w.sheet).includes(w.hex)) bySheet.get(w.sheet).push(w.hex);
+  }
+  const groups = new Map();                        // "sheet|hex" -> group
+  for (const [sheet, hexes] of bySheet) {
+    const found = await crFindCells(ctx, sheet, hexes);
+    found.forEach((g, i) => groups.set(sheet + "|" + hexes[i], g));
+  }
+  return wants.map((w) => groups.get(w.sheet + "|" + w.hex));
 }
 
-const crBlankHits = (groups) => groups.map((g) => g.values.map(() => false));
+/* ---------- OR: every rule on its own ---------- */
 
-function crScatter(hits, owner, into) {
-  hits.forEach((hit, k) => {
-    if (!hit) return;
-    const [gi, i] = owner[k];
-    into[gi][i] = true;
+function crMatchOr(groupsA, groupsB, opts) {
+  const hitsA = [], hitsB = [];
+  groupsA.forEach((ga, i) => {
+    const { hitA, hitB } = matchValues(ga.values, groupsB[i].values, opts);
+    hitsA.push(hitA.map((h) => h === true));
+    hitsB.push(hitB.map((h) => h === true));
   });
+  return { hitsA, hitsB };
 }
+
+/* ---------- AND: the rules must come true on one row ---------- */
 
 /**
- * Work out which cells are green, per mode. Returns a hit array per group on
- * each side, lined up with that group's values.
+ * Gather one side's groups into rows: row 12 carries rule 1's purple value and
+ * rule 2's blue value. Where a colour turns up twice on a row the leftmost cell
+ * is the one compared, and the rest of that row's cells simply follow its
+ * verdict.
+ *
+ * Returns the rows (each a value per rule, in rule order) plus, for every rule,
+ * which of its cells belong to which row — that is what the green/red is
+ * painted from.
  */
-function crMatchGroups(mode, groupsA, groupsB, opts) {
-  const hitsA = crBlankHits(groupsA);
-  const hitsB = crBlankHits(groupsB);
+function crRowsOf(groups) {
+  const order = [];                                // row numbers, first seen first
+  const seen = new Map();                          // row number -> index in order
+  const values = [];                               // per row: value per rule
+  const cells = groups.map(() => []);              // per rule: row index per cell
 
-  if (mode === "pair") {
-    for (let i = 0; i < groupsA.length; i++) {
-      const { hitA, hitB } = matchValues(groupsA[i].values, groupsB[i].values, opts);
-      hitA.forEach((h, k) => { if (h) hitsA[i][k] = true; });
-      hitB.forEach((h, k) => { if (h) hitsB[i][k] = true; });
-    }
-    return { hitsA, hitsB };
-  }
-
-  if (mode === "any") {
-    const a = crPool(groupsA), b = crPool(groupsB);
-    const { hitA, hitB } = matchValues(a.values, b.values, opts);
-    crScatter(hitA, a.owner, hitsA);
-    crScatter(hitB, b.owner, hitsB);
-    return { hitsA, hitsB };
-  }
-
-  // "all": every colour on the far side is a separate demand, so a value is
-  // green only where it was found in each of them. The far side's own cells go
-  // green where the value that claimed them came out green overall — a partial
-  // hit colours nothing. Both directions are worked out the same way: A against
-  // B's colours, then B against A's.
-  const demand = (mine, theirs) => {
-    const pool = crPool(mine);
-    const runs = [];
-    let keep = pool.values.map(() => true);
-    for (const g of theirs) {
-      const { hitA, pairA } = matchValues(pool.values, g.values, opts);
-      runs.push(pairA);
-      keep = keep.map((k, i) => k && hitA[i] === true);
-    }
-    return { pool, keep, runs };
-  };
-
-  const paintFar = (from, farGroups, farHits) => {
-    from.runs.forEach((pairA, g) => {
-      pairA.forEach((j, i) => {
-        if (j >= 0 && from.keep[i]) farHits[g][j] = true;
-      });
+  groups.forEach((g, r) => {
+    g.rows.forEach((row, i) => {
+      if (!seen.has(row)) {
+        seen.set(row, order.length);
+        order.push(row);
+        values.push(groups.map(() => undefined));
+      }
+      const at = seen.get(row);
+      if (values[at][r] === undefined) values[at][r] = g.values[i];
+      cells[r][i] = at;
     });
-  };
+  });
+  return { order, values, cells };
+}
 
-  const fromA = demand(groupsA, groupsB);
-  const fromB = demand(groupsB, groupsA);
-  crScatter(fromA.keep, fromA.pool.owner, hitsA);
-  crScatter(fromB.keep, fromB.pool.owner, hitsB);
-  paintFar(fromA, groupsB, hitsB);
-  paintFar(fromB, groupsA, hitsA);
-  return { hitsA, hitsB };
+function crMatchAnd(groupsA, groupsB, opts) {
+  const a = crRowsOf(groupsA);
+  const b = crRowsOf(groupsB);
+  const { hitA, hitB } = matchRows(a.values, b.values, opts);
+  const spread = (side, hits) => side.cells.map((rowOf) => rowOf.map((at) => hits[at] === true));
+  return { hitsA: spread(a, hitA), hitsB: spread(b, hitB) };
 }
 
 /* ---------- run ---------- */
 
 async function reconColours() {
-  const a = crState.a, b = crState.b;
-  const mode = $("cr-mode").value;
-  const hexA = [...new Set(a.colours.map(crHex))];
-  const hexB = [...new Set(b.colours.map(crHex))];
+  const wantsA = crRules.map((r) => ({ sheet: r.a.sheet, hex: crHex(r.a.colour) }));
+  const wantsB = crRules.map((r) => ({ sheet: r.b.sheet, hex: crHex(r.b.colour) }));
 
-  if (!a.sheet || !b.sheet) { setStatus("Pick a sheet on both sides.", true); return; }
-  if (mode === "pair" && hexA.length !== hexB.length) {
-    setStatus("Colour by colour needs the same number of colours on both sides.", true);
+  if (wantsA.concat(wantsB).some((w) => !w.sheet)) {
+    setStatus("Pick a sheet on both sides of every rule.", true);
     return;
   }
-  if (a.sheet === b.sheet && hexA.some((h) => hexB.includes(h))) {
-    setStatus("The same colour is on both sides of one sheet — use two sheets, or two colours.", true);
+  const clash = crRules.findIndex((r, i) =>
+    wantsA[i].sheet === wantsB[i].sheet && wantsA[i].hex === wantsB[i].hex);
+  if (clash >= 0) {
+    setStatus(`Rule ${clash + 1} is the same colour on the same sheet on both sides — use two sheets, or two colours.`, true);
     return;
   }
   if (!supports("1.9")) {
-    setStatus("Colour recon needs a newer Excel (ExcelApi 1.9). Use the column compare above instead.", true);
+    setStatus("Colour recon needs a newer Excel (ExcelApi 1.9). Use the Columns tab instead.", true);
     return;
   }
   const opts = readOpts();
@@ -312,23 +360,27 @@ async function reconColours() {
   try {
     let groupsA, groupsB;
     await Excel.run(async (ctx) => {
-      groupsA = await crFindCells(ctx, a.sheet, hexA);
-      groupsB = await crFindCells(ctx, b.sheet, hexB);
+      groupsA = await crReadSide(ctx, wantsA);
+      groupsB = await crReadSide(ctx, wantsB);
       const missing = [...groupsA, ...groupsB].find((g) => !g.values.length);
       if (missing) throw new Error(`nothing on “${missing.sheet}” is filled with #${missing.hex}.`);
 
-      const { hitsA, hitsB } = crMatchGroups(mode, groupsA, groupsB, opts);
+      const { hitsA, hitsB } = crRules.length > 1 && crJoin === "and"
+        ? crMatchAnd(groupsA, groupsB, opts)
+        : crMatchOr(groupsA, groupsB, opts);
+
       setStatus("Colouring...");
-      const wsA = ctx.workbook.worksheets.getItem(a.sheet);
-      const wsB = ctx.workbook.worksheets.getItem(b.sheet);
-      groupsA.forEach((g, i) => paintSide(wsA, g, hitsA[i]));
-      groupsB.forEach((g, i) => paintSide(wsB, g, hitsB[i]));
+      const paint = (groups, hits) => groups.forEach((g, i) => {
+        paintSide(ctx.workbook.worksheets.getItem(g.sheet), g, hits[i]);
+      });
+      paint(groupsA, hitsA);
+      paint(groupsB, hitsB);
       await ctx.sync();
     });
 
     lastPainted = [...groupsA, ...groupsB];
     const count = (groups) => groups.reduce((n, g) => n + g.values.length, 0);
-    setStatus(`Done — ${count(groupsA)} cells on A, ${count(groupsB)} on B.`);
+    setStatus(`Done — ${count(groupsA)} cells on the left, ${count(groupsB)} on the right.`);
   } catch (e) {
     setStatus("Error: " + e.message, true);
   } finally {
