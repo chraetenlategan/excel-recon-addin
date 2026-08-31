@@ -17,6 +17,7 @@
   <nav class="tabs" role="tablist">
     <button class="tab active" data-tab="colour" role="tab">Colour recon</button>
     <button class="tab" data-tab="columns" role="tab">Columns</button>
+    <button class="tab" data-tab="pdf" role="tab">PDF finder</button>
   </nav>
 
   <main>
@@ -73,8 +74,24 @@
       <button id="compare" class="primary">Compare</button>
     </div>
 
-    <!-- ---------- matching rules, shared by both tabs ---------- -->
-    <section class="opts">
+
+    <!-- ---------- pdf finder ---------- -->
+    <div class="panel hidden" id="tab-pdf">
+      <p class="hint block">Highlight the cells you want to find, click <b>Use selected cells</b>, then open the finder and pick a PDF. Every value is outlined where it is printed; tick one off on the page and its cell is coloured here.</p>
+
+      <button id="pf-use-selection" class="use-sel">Use selected cells</button>
+      <p class="range" id="pf-range">no cells picked</p>
+
+      <button id="pf-open" class="primary">Open PDF finder</button>
+
+      <p class="hint block">The finder opens in a window of its own beside Excel. Leave this pane open &mdash; it is what colours the cells. Marker <span id="pf-dot" class="pf-dot"></span>, changed in the finder window.</p>
+
+      <button id="pf-clear" class="link">Clear ticks</button>
+      <p id="pf-status" class="status"></p>
+    </div>
+
+    <!-- ---------- matching rules, shared by the two compare tabs ---------- -->
+    <section class="opts" id="opts">
       <label class="check"><input type="checkbox" id="ignore-sign" checked /> Ignore + / − (treat −100 as 100)</label>
       <label class="check"><input type="checkbox" id="ignore-case" checked /> Ignore case &amp; spacing on text</label>
       <details class="rules">
@@ -105,6 +122,8 @@
   <script src="sheets.js"></script>
   <script src="functions.js"></script>
   <script src="colourrecon.js"></script>
+  <script src="pdffinder/wire.js"></script>
   <script src="taskpane.js"></script>
+  <script src="pdffinder-pane.js"></script>
 </body>
 </html>

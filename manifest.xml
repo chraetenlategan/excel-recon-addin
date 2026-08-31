@@ -9,11 +9,11 @@
   <!-- Unique add-in id. Keep this stable forever; changing it makes Excel
        treat it as a different add-in. -->
   <Id>11ef275f-d353-4b26-a17b-ce5047e9c2e1</Id>
-  <Version>1.1.0.0</Version>
+  <Version>1.2.0.0</Version>
   <ProviderName>Chraeten Lategan</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="Reconcile" />
-  <Description DefaultValue="Match a cashbook against a bank statement and/or general ledger by amount + date, right inside Excel." />
+  <Description DefaultValue="Reconcile columns, colours and PDFs against your workbook, right inside Excel." />
 
   <!-- All URLs point at GitHub Pages. Update every occurrence of the base URL
        if you ever move the host; the id above stays the same. -->

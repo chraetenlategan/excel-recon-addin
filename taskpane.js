@@ -52,14 +52,18 @@ Office.onReady((info) => {
   $("compare").onclick = compare;
   $("clear-colours").onclick = clearColours;
   initColourRecon();
+  initPdfFinder();
   loadSheetList();
 });
 
-// Two tools, one pane: the colour recon and the column compare each get a tab,
-// and the matching rules underneath belong to whichever is showing.
+// Three tools, one pane: the colour recon, the column compare and the PDF
+// finder each get a tab. The matching rules underneath belong to the two
+// compare tabs — the finder does its own matching, against a page — so they
+// come off with it.
 function showTab(name) {
   for (const tab of document.querySelectorAll(".tab")) tab.classList.toggle("active", tab.dataset.tab === name);
   for (const panel of document.querySelectorAll(".panel")) panel.classList.toggle("hidden", panel.id !== "tab-" + name);
+  $("opts").classList.toggle("hidden", name === "pdf");
   setStatus("");
 }
 

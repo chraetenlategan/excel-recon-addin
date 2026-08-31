@@ -1,0 +1,316 @@
+:root{
+  --ink:#1C2536;
+  --ink-soft:#5B6879;
+  --navy:#1F3A5F;
+  --navy-soft:#33578A;
+  --gold:#A8853F;
+  --gold-deep:#8A6A28;
+  --gold-light:#D8C08A;
+  --gold-wash:#FBF7EF;
+  --panel:#FFFFFF;
+  --chrome:#FAF7F1;
+  --line:#E6DFD0;
+  --line-soft:#EFEAE0;
+  --backdrop:#EDEFF3;
+  --paper:#FFFFFF;
+  --focus:#33578A;
+
+  /* the sheet reads as a spreadsheet: cool, even gridlines */
+  --grid:#DCE1E8;
+  --grid-head:#F1F3F6;
+  --sel:#33578A;
+  --sel-wash:#EEF3F9;
+
+  /* highlights: one meaning per colour, nothing else tints a box */
+  --hl-open:rgba(168,133,63,.42);          /* printed, unclaimed        */
+  --hl-open-fill:rgba(168,133,63,.05);
+  --hl-cand:rgba(51,87,138,.85);           /* free, for the row in hand */
+  --hl-cand-fill:rgba(51,87,138,.07);
+  /* the marker itself — the user picks this one, app.js overwrites both */
+  --tick:#FFE94D;
+  --tick-edge:#D4AF37;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  font-family:"Segoe UI",system-ui,sans-serif;
+  color:var(--ink);background:var(--backdrop);
+  display:flex;flex-direction:column;overflow:hidden;
+}
+
+/* ---------- header ---------- */
+header.chrome{
+  background:#fff;padding:12px 22px;display:flex;align-items:center;gap:20px;
+  border-bottom:1px solid var(--line);box-shadow:0 2px 10px rgba(28,37,54,.06);
+  position:relative;flex:none;z-index:5;
+}
+header.chrome::after{
+  content:"";position:absolute;left:0;right:0;bottom:-3px;height:3px;
+  background:linear-gradient(90deg,var(--gold) 0%,var(--gold-light) 35%,var(--navy) 100%);
+}
+header.chrome .logo{height:56px;width:auto;display:block;flex:none;padding-right:20px;border-right:1px solid var(--line)}
+header.chrome h1{
+  font-family:Cambria,Georgia,serif;font-size:16px;font-weight:600;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--navy);margin:0;flex:1;white-space:nowrap;
+}
+header.chrome h1 small{
+  display:block;font-family:"Segoe UI",sans-serif;font-size:11px;font-weight:400;
+  letter-spacing:.04em;text-transform:none;color:var(--gold-deep);margin-top:3px;
+}
+.actions{display:flex;gap:8px}
+.actions button{
+  font:inherit;font-size:13px;font-weight:600;padding:8px 15px;border-radius:4px;cursor:pointer;
+  border:1px solid var(--line);background:#fff;color:var(--navy);
+  transition:background .15s ease,border-color .15s ease,color .15s ease;
+}
+.actions button:hover:not(:disabled){background:var(--gold-wash);border-color:var(--gold-light);color:var(--gold-deep)}
+.actions button.primary{
+  background:linear-gradient(180deg,#B9954C 0%,var(--gold) 55%,var(--gold-deep) 100%);
+  border-color:var(--gold-deep);color:#fff;box-shadow:0 1px 3px rgba(138,106,40,.35);
+}
+.actions button.primary:hover{background:linear-gradient(180deg,var(--gold) 0%,var(--gold-deep) 100%);color:#fff}
+.actions button:disabled{opacity:.42;cursor:default}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
+
+/* ---------- layout ---------- */
+.app{flex:1;display:flex;min-height:0}
+
+/* ---------- side panel ---------- */
+.side{
+  width:var(--side,352px);min-width:240px;max-width:80vw;background:var(--panel);
+  display:flex;flex-direction:column;min-height:0;position:relative;flex:none;
+}
+/* the two windows, and the handle between them */
+.split{
+  flex:none;width:5px;cursor:col-resize;background:var(--line);
+  border-left:1px solid var(--line-soft);border-right:1px solid var(--line-soft);
+}
+.split:hover,.split.dragging{background:var(--gold-light)}
+.side-head{
+  display:flex;align-items:center;gap:10px;padding:10px 12px;
+  border-bottom:1px solid var(--line-soft);background:var(--chrome);flex:none;
+}
+.tally{
+  font-family:Cambria,Georgia,serif;font-size:15px;color:var(--navy);letter-spacing:.06em;flex:1;
+}
+.tally #tHit{color:var(--gold-deep);font-weight:700}
+.tools{display:flex;align-items:center;gap:6px}
+.chk{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--ink-soft);cursor:pointer;user-select:none}
+.chk input{accent-color:var(--gold-deep);margin:0}
+button.mini{
+  font:inherit;font-size:11px;font-weight:600;letter-spacing:.04em;padding:5px 9px;
+  border:1px solid var(--line);background:#fff;color:var(--navy);border-radius:3px;cursor:pointer;
+}
+button.mini:hover{background:var(--gold-wash);border-color:var(--gold-light);color:var(--gold-deep)}
+button.mini.wide{width:100%;margin-top:6px;padding:7px}
+/* the current tick colour, and the swatches behind it */
+button.mini.dot{
+  width:21px;height:21px;padding:0;border-radius:50%;
+  border:1px solid rgba(28,37,54,.3);background:var(--tick);
+}
+button.mini.dot:hover{border-color:var(--navy-soft);background:var(--tick)}
+.picker{
+  position:absolute;z-index:9;top:42px;right:10px;display:flex;gap:6px;align-items:center;
+  padding:6px 7px;background:#fff;border:1px solid var(--line);border-radius:5px;
+  box-shadow:0 4px 14px rgba(28,37,54,.16);
+}
+.picker[hidden]{display:none}
+.picker .sw{
+  width:19px;height:19px;border-radius:50%;padding:0;cursor:pointer;
+  border:1px solid rgba(28,37,54,.25);
+}
+.picker .sw[data-c="#FFE94D"]{background:#FFE94D}
+.picker .sw[data-c="#A6F06B"]{background:#A6F06B}
+.picker .sw[data-c="#6FD7FF"]{background:#6FD7FF}
+.picker .sw[data-c="#FF9ED2"]{background:#FF9ED2}
+.picker .sw[data-c="#FFB05C"]{background:#FFB05C}
+.picker .sw.on{box-shadow:0 0 0 2px var(--sel)}
+/* any colour at all */
+.picker .sw.any{
+  overflow:hidden;position:relative;
+  background:conic-gradient(#FF6B6B,#FFD93D,#6BCB77,#4D96FF,#B983FF,#FF6B6B);
+}
+.picker .sw.any input{
+  position:absolute;inset:-6px;width:200%;height:200%;padding:0;border:0;
+  opacity:0;cursor:pointer;
+}
+
+/* nothing picked yet */
+.empty{
+  margin:0;padding:14px 14px 16px;font-size:12px;line-height:1.6;color:var(--ink-soft);
+  border-top:1px solid var(--line-soft);background:var(--chrome);flex:none;
+}
+.empty[hidden]{display:none}
+.empty b{color:var(--navy)}
+
+/* ---------- the sheet ---------- */
+.sheet{flex:1;display:flex;flex-direction:column;min-height:0}
+/* `display` here would otherwise beat the hidden attribute and leave an empty
+   sheet standing above the workbook */
+.sheet[hidden]{display:none}
+
+/* name box + formula bar, as in the real thing */
+.fxbar{
+  flex:none;display:flex;align-items:stretch;height:26px;
+  background:#fff;border-bottom:1px solid var(--grid);
+}
+.fxbar .namebox{
+  width:54px;flex:none;display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:600;color:var(--navy);background:var(--grid-head);
+  border-right:1px solid var(--grid);font-variant-numeric:tabular-nums;
+}
+.fxbar .fx{
+  width:26px;flex:none;display:flex;align-items:center;justify-content:center;
+  font-family:Cambria,Georgia,serif;font-style:italic;font-size:12px;color:var(--ink-soft);
+  border-right:1px solid var(--grid);
+}
+.fxbar .fxval{
+  flex:1;min-width:0;display:flex;align-items:center;padding:0 8px;font-size:12px;
+  color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+
+/* column letters */
+.colhead,.cells li{display:grid;grid-template-columns:58px 1fr 44px 26px;align-items:stretch}
+.colhead{
+  flex:none;background:var(--grid-head);border-bottom:1px solid var(--grid);
+  font-size:10.5px;font-weight:600;color:var(--ink-soft);
+}
+.colhead>span{
+  padding:3px 6px;border-right:1px solid var(--grid);
+  display:flex;align-items:center;justify-content:center;
+}
+.colhead .r{background:var(--grid-head);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;text-align:center;line-height:1.5}
+.colhead .k{border-right:none}
+
+.cells{list-style:none;margin:0;padding:0;overflow-y:auto;flex:1;min-height:0;background:#fff}
+.cells li{
+  font-size:13px;cursor:cell;user-select:none;background:#fff;
+  border-bottom:1px solid var(--grid);
+}
+.cells li>span{
+  padding:5px 7px;border-right:1px solid var(--grid);
+  display:flex;align-items:center;min-width:0;position:relative;
+}
+/* the row-number gutter */
+.cells li .rn{
+  background:var(--grid-head);color:var(--ink-soft);font-size:10.5px;
+  justify-content:center;font-variant-numeric:tabular-nums;
+}
+.cells li .v{
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;line-height:1.55;
+  font-variant-numeric:tabular-nums;
+}
+.cells li .v.num{text-align:right;font-family:Consolas,"Courier New",monospace;font-size:12.5px}
+.cells li .n{
+  font-size:10.5px;color:var(--ink-soft);font-variant-numeric:tabular-nums;
+  justify-content:flex-end;
+}
+.cells li .k{justify-content:center;border-right:none;padding:0}
+.cells li .k::before{
+  content:"";width:13px;height:13px;border:1px solid var(--grid);border-radius:2px;background:#fff;
+}
+
+.cells li:hover{background:var(--sel-wash)}
+.cells li:hover .k::before{border-color:var(--navy-soft)}
+
+/* the selected cell, drawn the way a spreadsheet draws it */
+.cells li.active .rn{background:var(--sel);color:#fff;font-weight:600}
+.cells li.active .v{box-shadow:inset 0 0 0 2px var(--sel)}
+.cells li.active{background:var(--sel-wash)}
+
+/* ticked off — the sheet carries the same marker colour as the page */
+.cells li.done .v{
+  background:var(--tick);box-shadow:inset 0 0 0 1px var(--tick-edge);
+  text-decoration:line-through;text-decoration-color:var(--tick-edge);
+}
+.cells li.done.active .v{box-shadow:inset 0 0 0 2px var(--sel)}
+.cells li.done .n{color:var(--ink-soft);font-weight:600}
+.cells li.done .k::before{
+  content:"\2713";display:flex;align-items:center;justify-content:center;
+  font-size:11px;line-height:1;color:var(--ink);
+  background:var(--tick);border-color:var(--tick-edge);
+}
+
+/* not printed anywhere — the red corner an auditor already reads as "look here" */
+.cells li.miss .v{color:#9AA2AC;font-style:italic}
+.cells li.miss .v::after{
+  content:"";position:absolute;top:0;right:0;border:4px solid transparent;
+  border-top-color:#B4485C;border-right-color:#B4485C;
+}
+/* printed, but every printing is already held by another row */
+.cells li.short .n{color:#B07A2A}
+.cells li.short .n::after{content:"\00A0\25CB"}
+
+/* ---------- viewer ---------- */
+.viewer{
+  flex:1;overflow-y:auto;position:relative;
+  background:radial-gradient(1200px 500px at 50% -10%,rgba(168,133,63,.10),transparent 70%),var(--backdrop);
+  padding:24px 16px 60px;
+}
+.pages{display:flex;flex-direction:column;align-items:center;gap:22px}
+.page{
+  position:relative;background:var(--paper);border-top:4px solid var(--gold);
+  box-shadow:0 10px 34px rgba(28,37,54,.16),0 2px 6px rgba(28,37,54,.08);
+  max-width:100%;
+}
+.page canvas{display:block;max-width:100%;height:auto}
+.marks{position:absolute;inset:0;pointer-events:none}
+
+/* ---------- highlights ---------- */
+.mk{
+  position:absolute;border-radius:2px;pointer-events:auto;cursor:pointer;
+  transition:background .13s ease,box-shadow .13s ease;
+}
+/* printed here, nobody has claimed it: a hairline, so a busy page stays readable */
+.mk.open{background:var(--hl-open-fill);box-shadow:inset 0 0 0 1px var(--hl-open)}
+.mk.open:hover{background:rgba(168,133,63,.18);box-shadow:inset 0 0 0 1px var(--gold-deep)}
+/* free, and it belongs to the row in hand */
+.mk.candidate{background:var(--hl-cand-fill);box-shadow:inset 0 0 0 1.5px var(--hl-cand)}
+.mk.candidate:hover{background:rgba(51,87,138,.18)}
+/* ticked off — laid on like a marker pen: multiply keeps the figures legible
+   underneath, so the colour can be as bright as the user likes */
+.mk.claimed{
+  background:var(--tick);mix-blend-mode:multiply;
+  box-shadow:inset 0 0 0 1px var(--tick-edge);
+}
+.mk.claimed:hover{filter:saturate(1.25) brightness(.95)}
+/* ticked off by the row in hand */
+.mk.claimed.held{box-shadow:inset 0 0 0 1px var(--tick-edge),0 0 0 2.5px rgba(51,87,138,.42)}
+.mk.flash{animation:took .56s ease-out}
+@keyframes took{
+  0%{box-shadow:inset 0 0 0 1px var(--tick-edge),0 0 0 9px rgba(51,87,138,0)}
+  35%{box-shadow:inset 0 0 0 1px var(--tick-edge),0 0 0 6px rgba(51,87,138,.34)}
+  100%{box-shadow:inset 0 0 0 1px var(--tick-edge),0 0 0 2.5px rgba(51,87,138,.42)}
+}
+
+/* ---------- drop ---------- */
+.drop{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  pointer-events:none;z-index:3;
+}
+.drop.gone{display:none}
+.drop.over{background:rgba(251,247,239,.86)}
+.dropInner{text-align:center;color:var(--ink-soft)}
+.dropInner p{font-family:Cambria,Georgia,serif;font-size:13px;letter-spacing:.16em;text-transform:uppercase;margin:14px 0 0}
+.seal{
+  width:74px;height:74px;margin:0 auto;border:3px double var(--gold);border-radius:50%;
+  background:rgba(255,255,255,.7);position:relative;
+}
+.seal::after{
+  content:"";position:absolute;inset:14px;border-radius:50%;border:1px solid var(--gold-light);
+}
+
+/* ---------- progress ---------- */
+.bar{position:fixed;left:0;right:0;bottom:0;height:3px;background:var(--line-soft);z-index:20}
+.bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--gold) 0%,var(--gold-light) 60%,var(--navy) 100%);transition:width .2s ease}
+
+/* ---------- responsive ---------- */
+@media (max-width:900px){
+  header.chrome{padding:10px 14px;gap:12px}
+  header.chrome .logo{height:42px;padding-right:12px}
+  header.chrome h1{white-space:normal;font-size:14px}
+  .app{flex-direction:column}
+  .side{width:100%;min-width:0;max-width:none;max-height:48vh;border-bottom:1px solid var(--line)}
+  .split{display:none}
+  .viewer{padding:14px 6px 40px}
+}
