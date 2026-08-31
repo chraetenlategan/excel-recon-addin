@@ -164,3 +164,8 @@ button.link.add:hover:not(:disabled) { text-decoration: underline; }
 .rules summary:hover { color: var(--fg); }
 .rules .num { font-weight: 400; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .rules .num input { width: 70px; margin-top: 0; flex: none; }
+
+/* "Cells side by side belong together" — a checkbox with its own explanation. */
+.cr-check { font-weight: 400; display: flex; align-items: flex-start; gap: 6px; margin: 12px 0 10px; }
+.cr-check input { flex: none; margin-top: 2px; }
+.cr-check .hint { display: block; margin-top: 3px; font-size: 11px; color: var(--muted); font-weight: 400; }

@@ -21,6 +21,10 @@ const $ = (id) => document.getElementById(id);
 
 const GREEN = "C6EFCE";
 const RED = "FFC7CE";
+// A third verdict, used by the colour recon: a cell that was only ever an
+// alternative the match didn't need. It is not a match and not a miss, so it
+// gets no colour at all — the fill simply comes off.
+const CLEAR = "clear";
 
 // Per side: what the user picked plus the used-range geometry of that sheet.
 // `columns` is a list of 0-based column indexes — several means either/or.
@@ -540,39 +544,48 @@ async function compare() {
 const AREAS_PER_CALL = 50;
 
 /**
- * Fill the cells of one side. Consecutive rows of the same colour are merged
- * into runs, and the runs of a colour go in as one multi-area call where the
+ * Fill the cells of one side. Consecutive rows with the same verdict are merged
+ * into runs, and the runs of a verdict go in as one multi-area call where the
  * host supports it, so a thousand-row column is a few operations.
  */
 function paintSide(ws, side, hits) {
-  const runs = { [GREEN]: [], [RED]: [] };
+  // A verdict per cell -> what happens to its fill. true is a match, false a
+  // miss, CLEAR takes the fill off, and null (a blank cell) leaves it alone.
+  const paintOf = (hit) =>
+    (hit === null || hit === undefined) ? null : hit === CLEAR ? CLEAR : hit ? GREEN : RED;
+
+  const runs = { [GREEN]: [], [RED]: [], [CLEAR]: [] };
   let offset = 0;
   for (const p of side.parts) {
     const n = p.lastRow - p.firstRow + 1;
-    const mine = hits.slice(offset, offset + n);
+    const mine = hits.slice(offset, offset + n).map(paintOf);
     offset += n;
     const letter = colLetter(p.column);
     let i = 0;
     while (i < mine.length) {
-      const hit = mine[i];
-      if (hit === null) { i++; continue; }
+      const act = mine[i];
+      if (act === null) { i++; continue; }
       let j = i;
-      while (j + 1 < mine.length && mine[j + 1] === hit) j++;
-      runs[hit ? GREEN : RED].push(`${letter}${p.firstRow + i}:${letter}${p.firstRow + j}`);
+      while (j + 1 < mine.length && mine[j + 1] === act) j++;
+      runs[act].push(`${letter}${p.firstRow + i}:${letter}${p.firstRow + j}`);
       i = j + 1;
     }
   }
 
   const multi = supports("1.9");
-  for (const colour of [GREEN, RED]) {
-    const addrs = runs[colour];
+  const apply = (range, act) => {
+    if (act === CLEAR) range.format.fill.clear();
+    else range.format.fill.color = "#" + act;
+  };
+  for (const act of [GREEN, RED, CLEAR]) {
+    const addrs = runs[act];
     if (!addrs.length) continue;
     if (!multi) {
-      for (const a of addrs) ws.getRange(a).format.fill.color = "#" + colour;
+      for (const a of addrs) apply(ws.getRange(a), act);
       continue;
     }
     for (let k = 0; k < addrs.length; k += AREAS_PER_CALL) {
-      ws.getRanges(addrs.slice(k, k + AREAS_PER_CALL).join(",")).format.fill.color = "#" + colour;
+      apply(ws.getRanges(addrs.slice(k, k + AREAS_PER_CALL).join(",")), act);
     }
   }
 }
