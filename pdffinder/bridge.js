@@ -45,10 +45,16 @@ export function start() {
       ui.addHandlerAsync(Office.EventType.DialogParentMessageReceived, (arg) => read(arg.message));
     }
 
+    // The finder may be served from somewhere other than the pane, and a
+    // cross-origin reply has to name who it is for. The pane puts its own
+    // origin on the query string; failing that the two share one.
+    let parent = window.location.origin;
+    try { parent = new URLSearchParams(window.location.search).get("parent") || parent; }
+    catch { /* no query string */ }
+
     post = (chunk) => {
-      // targetOrigin is ignored on desktop and required on the web; the pane
-      // and the dialog are served from the same origin either way.
-      try { ui.messageParent(chunk, { targetOrigin: window.location.origin }); }
+      // targetOrigin is ignored on desktop and required on the web.
+      try { ui.messageParent(chunk, { targetOrigin: parent }); }
       catch { ui.messageParent(chunk); }
     };
 

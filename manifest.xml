@@ -9,7 +9,7 @@
   <!-- Unique add-in id. Keep this stable forever; changing it makes Excel
        treat it as a different add-in. -->
   <Id>11ef275f-d353-4b26-a17b-ce5047e9c2e1</Id>
-  <Version>1.2.0.0</Version>
+  <Version>1.2.1.0</Version>
   <ProviderName>Chraeten Lategan</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="Reconcile" />
@@ -22,6 +22,18 @@
   <SupportUrl DefaultValue="https://github.com/chraetenlategan/excel-recon-addin" />
 
   <!-- Excel only. -->
+
+  <!-- The PDF finder opens as a dialog. When it is served from somewhere other
+       than the add-in itself (see PF_BASE in pdffinder-pane.js), Office will
+       only let it message the pane if its origin is listed here. Office also
+       requires HTTPS for dialog content, so the http:// entry below only takes
+       effect once that host serves TLS — until then the pane falls back to its
+       own copy of the finder on its own. -->
+  <AppDomains>
+    <AppDomain>http://192.168.0.250:5173</AppDomain>
+    <AppDomain>https://192.168.0.250:5173</AppDomain>
+  </AppDomains>
+
   <Hosts>
     <Host Name="Workbook" />
   </Hosts>

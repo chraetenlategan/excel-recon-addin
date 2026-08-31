@@ -25,7 +25,38 @@ let pfHex = "#FFE94D";
 let pfDialog = null;
 
 const PF_TICK_KEY = "vdm-pdffinder:tick";
-const PF_URL = new URL("pdffinder.html", window.location.href).href;
+
+/**
+ * Where the finder window is served from. This is the one line to change.
+ *
+ * Two rules Office enforces on a dialog, both worth knowing before moving it:
+ *
+ *  - **It must be HTTPS.** Office refuses a plain `http://` dialog outright
+ *    (localhost is the only exemption). A LAN box needs a certificate the
+ *    workstations trust — an internal CA cert, the same thing `serve.py` was
+ *    written for — before it can host this.
+ *  - **Cross-origin needs declaring.** A finder on a different origin from the
+ *    pane can still message it, but only if that origin is listed in the
+ *    manifest's `<AppDomains>` and both ends name each other in `targetOrigin`.
+ *    Both are done: the domain is in `manifest.xml`, and the pane's origin
+ *    rides in on the query string for `bridge.js` to answer to.
+ *
+ * If the configured home cannot be opened, the pane falls back to the copy
+ * sitting beside it and says so, so a server that is down or still on HTTP
+ * never costs anyone the feature.
+ */
+const PF_BASE = "http://192.168.0.250:5173/";
+
+const pfUrl = (base) => {
+  const u = new URL("pdffinder.html", base);
+  u.searchParams.set("parent", window.location.origin);
+  return u.href;
+};
+
+const PF_HOME = pfUrl(PF_BASE);
+const PF_FALLBACK = pfUrl(window.location.href);
+// The origin of whichever of the two actually opened — messageChild must name it.
+let pfOrigin = new URL(PF_HOME).origin;
 
 function initPdfFinder() {
   try {
@@ -139,11 +170,22 @@ function pfOpen() {
   if (pfDialog) { pfSetStatus("The finder is already open."); return; }
 
   $("pf-open").disabled = true;
-  Office.context.ui.displayDialogAsync(PF_URL, { height: 88, width: 88, displayInIframe: false }, (res) => {
-    $("pf-open").disabled = false;
+  pfTry(PF_HOME, () => pfTry(PF_FALLBACK, null));
+}
+
+/** Open one candidate URL, handing off to `next` (if any) when it will not open. */
+function pfTry(url, next) {
+  Office.context.ui.displayDialogAsync(url, { height: 88, width: 88, displayInIframe: false }, (res) => {
     if (res.status !== Office.AsyncResultStatus.Succeeded) {
+      if (next) { next(); return; }
+      $("pf-open").disabled = false;
       pfSetStatus("Could not open the finder: " + res.error.message, true);
       return;
+    }
+    $("pf-open").disabled = false;
+    pfOrigin = new URL(url).origin;
+    if (url === PF_FALLBACK && PF_HOME !== PF_FALLBACK) {
+      pfSetStatus(PF_BASE + " could not be opened — using the copy beside the pane.");
     }
     pfDialog = res.value;
     pfDialog.addEventHandler(Office.EventType.DialogMessageReceived, pfRead);
@@ -152,7 +194,7 @@ function pfOpen() {
       pfDialog = null;
       pfSetStatus(arg.error === 12006 ? "Finder closed." : "Finder closed (" + arg.error + ").", arg.error !== 12006);
     });
-    pfSetStatus("Finder open — pick a PDF in that window.");
+    if (url === PF_HOME) pfSetStatus("Finder open — pick a PDF in that window.");
   });
 }
 
@@ -163,7 +205,7 @@ function supportsDialog() {
 function pfSend(msg) {
   if (!pfDialog) return;
   for (const chunk of PFWire.encode(msg)) {
-    try { pfDialog.messageChild(chunk, { targetOrigin: window.location.origin }); }
+    try { pfDialog.messageChild(chunk, { targetOrigin: pfOrigin }); }
     catch { try { pfDialog.messageChild(chunk); } catch { /* window gone */ } }
   }
 }
