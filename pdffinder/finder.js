@@ -372,7 +372,19 @@ function toast(text){
   toastSoon = setTimeout(() => { el.toast.hidden = true; }, 3200);
 }
 
-bridge.on('found', msg => toast(msg.msg || ''));
+// Excel is asked things and answers them; when it stops answering, the page
+// should say so rather than leave "Looking for …" standing for ever. Nothing
+// but a silent bridge produces that, so the message points straight at it.
+let waiting = 0;
+function expectAnswer(what){
+  clearTimeout(waiting);
+  waiting = setTimeout(() => {
+    if(window.PFDebug) window.PFDebug.log('bridge.silent', what + ' — Excel did not answer in 6s');
+    toast('Excel has not answered — press Debug to see why.');
+  }, 6000);
+}
+
+bridge.on('found', msg => { clearTimeout(waiting); toast(msg.msg || ''); });
 
 /** The printed value under a click, whatever the page prints there. */
 function valueUnder(e){
@@ -419,6 +431,7 @@ function lookUp(v){
   hitsFor(v);
   redraw();
   bridge.send({ t: 'find', sheet: S.sheet, v });
+  expectAnswer('find ' + v);
   toast('Looking for ' + v + ' in Excel…');
 }
 

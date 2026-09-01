@@ -67,6 +67,8 @@ page; `pfPaint` diffs against what it last painted.
 | `pdffinder/store.js` | Ticks and marker colour in `localStorage`, per PDF + scope. |
 | `pdffinder/bridge.js` | The dialog's end of the Office channel. |
 | `pdffinder/wire.js` | The chunking codec both ends speak — loaded by both. |
+| `pdffinder/debug.js` | The black box recorder both ends keep — loaded by both, first. |
+| `pdffinder/debugpanel.js` | The finder window's **Debug** drawer. |
 
 Office gives a dialog one string-sized wire in each direction, so every message
 is chunked by `wire.js` and reassembled on the other side. Both inbound handlers
@@ -85,6 +87,9 @@ silence, greeting included. Messages:
 | finder | `goto` | Put the Excel cursor on one cell of the scope. |
 | finder | `find` | Look a printed value up anywhere in the workbook. |
 | pane | `found` | What that lookup landed on, for the line over the page. |
+| either | `ping` / `pong` | The bridge test — see below. Answered by `bridge.js` itself. |
+| pane | `report` | Send me your log. |
+| finder | `log` | `{text}` — this window's log, for the pane's report. |
 
 ## Where it is served from
 
@@ -102,3 +107,45 @@ the manifest's `<AppDomains>`, with both ends naming each other in
 same version: a server holding some other app answers with its own page or a
 404, and the window opens on nothing. If the configured home will not open at
 all, the pane falls back to the copy beside it and says so.
+
+## When the bridge goes quiet
+
+The two ends are two windows, and when the wire between them stops there is
+nothing on either screen to say **which** direction stopped. A pane that never
+answers and a window that never asks look identical from the page: a
+double-click sits on *Looking for 5 400,00 in Excel…* for ever.
+
+So each end keeps its own log, from its first line of script, and each can print
+that log without the other's help — the one channel that would carry a joint
+report is the thing under suspicion.
+
+**Where to find it.** In the pane, under **Bridge diagnostics** on the PDF
+finder tab. In the window, the **Debug** button (or Ctrl+Alt+D). Both hold a
+textarea that can simply be selected and copied where the clipboard API is
+locked down inside a dialog.
+
+**How to read it.** Press **Test bridge** in the pane. The same `ping` goes down
+all three forms of `messageChild` Office offers, each labelled; `bridge.js`
+answers every ping it receives three times over, once down each form of
+`messageParent`, labelled the same way. Four seconds later:
+
+| What the two logs show | What is broken |
+| --- | --- |
+| Pane logs `test.ping`, window's log has no `in.ping` | **pane → window**. Look at `dialog.opened` (cross-origin?) and `in.handler` in the window. |
+| Window logs `in.ping`, pane logs no `test.pong` | **window → pane**. This is the failure that leaves a double-click hanging. |
+| Some labels come back, others do not | The channel works in one form only — make `pfPost` / `rawPost` prefer that one. |
+| Both, in a few ms | The bridge is fine; the fault is in what the message asked for — read the `excel.*` lines. |
+
+Tag names are a dotted path so a log can be read down its left column:
+`dialog.*` opening the window, `out.*` / `in.*` chunks each way, `wire.*` the
+codec (`wire.notString` is the classic — a handler's event object fed to the
+reader instead of the string on `.message`), `excel.*` what the pane did to the
+workbook, `test.*` the bridge test, `window.error` anything that threw where
+nobody was catching.
+
+**Fetch window log** (pane) and **Send to Excel** (window) put both logs in one
+report — but only where the return leg works at all, which is exactly the case
+where it is least needed. When it does not, copy each end separately.
+
+Recording is always on. It is a few hundred short strings in memory, and it
+means a failure five minutes old is still there when somebody thinks to look.

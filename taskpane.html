@@ -87,6 +87,18 @@
 
       <button id="pf-open" class="primary">Open PDF finder</button>
       <p id="pf-status" class="status"></p>
+
+      <details class="dbg" id="pf-dbg">
+        <summary>Bridge diagnostics</summary>
+        <p class="hint">Open the finder, press <b>Test bridge</b>, then copy the report.</p>
+        <div class="dbg-tools">
+          <button id="pf-dbg-test">Test bridge</button>
+          <button id="pf-dbg-pull" title="Ask the finder window for its own log">Fetch window log</button>
+          <button id="pf-dbg-copy">Copy report</button>
+          <button id="pf-dbg-clear">Clear</button>
+        </div>
+        <textarea id="pf-dbg-log" readonly spellcheck="false"></textarea>
+      </details>
     </div>
 
     <!-- ---------- matching rules, shared by the two compare tabs ---------- -->
@@ -121,6 +133,7 @@
   <script src="sheets.js"></script>
   <script src="functions.js"></script>
   <script src="colourrecon.js"></script>
+  <script src="pdffinder/debug.js"></script>
   <script src="pdffinder/wire.js"></script>
   <script src="taskpane.js"></script>
   <script src="pdffinder-pane.js"></script>

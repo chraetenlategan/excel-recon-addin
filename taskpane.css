@@ -174,3 +174,20 @@ button.link.add:hover:not(:disabled) { text-decoration: underline; }
 /* The whole tab is three fields and a button: which cells the finder should
    look for. Everything else about the finder lives in its own window. */
 #tab-pdf .hint { font-weight: 400; color: var(--muted); font-size: 11px; }
+
+/* the PDF-finder bridge log — shut, and out of the way, until something breaks */
+.dbg { margin: 14px 0 0; font-size: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+.dbg summary { color: var(--muted); cursor: pointer; }
+.dbg summary:hover { color: var(--fg); }
+.dbg .hint { display: block; margin: 6px 0; font-size: 11px; color: var(--muted); font-weight: 400; }
+.dbg-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.dbg-tools button {
+  font: inherit; font-size: 11px; padding: 4px 9px; border: 1px solid var(--line);
+  border-radius: 2px; background: #fff; color: var(--fg); cursor: pointer; width: auto;
+}
+.dbg-tools button:hover { border-color: var(--accent); color: var(--accent); }
+#pf-dbg-log {
+  width: 100%; height: 220px; resize: vertical; padding: 6px 8px;
+  border: 1px solid var(--line); border-radius: 2px; background: #fff; color: var(--fg);
+  font: 10px/1.45 Consolas, "Courier New", monospace; white-space: pre; overflow: auto;
+}

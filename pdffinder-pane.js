@@ -33,6 +33,11 @@ let pfGreeted = false;
 
 const PF_TICK_KEY = "vdm-pdffinder:tick";
 
+// Every step this file takes on the bridge is written down. `pdffinder/debug.js`
+// is loaded before it, so the recorder is already listening; the guard is only
+// there so the pane still runs if that file is ever dropped.
+const pfSay = (tag, d) => { if (window.PFDebug) window.PFDebug.log(tag, d); };
+
 // A whole column of a large book is more than anyone reconciles against one
 // statement, and every value has to be searched for on every page.
 const PF_MAX_CELLS = 10000;
@@ -85,6 +90,7 @@ function initPdfFinder() {
   } catch { /* first run */ }
 
   $("pf-open").onclick = pfOpen;
+  initPfDebug();
 }
 
 /** Fill the sheet picker, keeping whatever was chosen if it is still there. */
@@ -205,6 +211,7 @@ async function pfReadScope(announce) {
     pfState.sheet = sheet;
     pfState.scope = pfLabel(sheet, cols, rows, cells.length);
     pfState.cells = cells;
+    pfSay("excel.scope", pfState.scope);
     pfSend({ t: "rows", sheet, scope: pfState.scope, cells });
     if (announce) {
       pfSetStatus(capped
@@ -213,6 +220,7 @@ async function pfReadScope(announce) {
     }
     return true;
   } catch (e) {
+    pfSay("excel.scope.threw", e && (e.stack || e.message));
     pfSetStatus("Could not read those cells: " + e.message, true);
     return false;
   }
@@ -231,7 +239,9 @@ function pfCellValue(value, text, format) {
 /* ---------- the dialog ---------- */
 
 async function pfOpen() {
+  pfSay("open.clicked");
   if (!supportsDialog()) {
+    pfSay("open.noDialogApi", "DialogApi 1.2 is not supported by this Excel");
     pfSetStatus("This version of Excel cannot open the finder window. Excel 2019 or Microsoft 365 is needed.", true);
     return;
   }
@@ -246,8 +256,10 @@ async function pfOpen() {
 
 /** Open one candidate URL, handing off to `next` (if any) when it will not open. */
 function pfTry(url, next) {
+  pfSay("dialog.open", url);
   Office.context.ui.displayDialogAsync(url, { height: 88, width: 88, displayInIframe: false }, (res) => {
     if (res.status !== Office.AsyncResultStatus.Succeeded) {
+      pfSay("dialog.failed", (res.error && (res.error.code + " " + res.error.message)) + (next ? " — trying the fallback" : ""));
       if (next) { next(); return; }
       $("pf-open").disabled = false;
       pfSetStatus("Could not open the finder: " + res.error.message, true);
@@ -255,6 +267,8 @@ function pfTry(url, next) {
     }
     $("pf-open").disabled = false;
     pfOrigin = new URL(url).origin;
+    pfSay("dialog.opened", "origin " + pfOrigin +
+      (pfOrigin === window.location.origin ? " (same as the pane)" : " (CROSS origin — needs <AppDomains>)"));
     if (url === PF_FALLBACK && PF_HOME !== PF_FALLBACK) {
       pfSetStatus(PF_BASE + " could not be opened — using the copy beside the pane.");
     }
@@ -262,15 +276,26 @@ function pfTry(url, next) {
     pfGreeted = false;
     // Office hands the handler an event object, not the string the finder sent:
     // the chunk is on `arg.message`, and the reader wants that and nothing else.
-    pfDialog.addEventHandler(Office.EventType.DialogMessageReceived, (arg) => pfRead(arg && arg.message));
+    pfDialog.addEventHandler(Office.EventType.DialogMessageReceived, (arg) => {
+      if (!arg || typeof arg.message !== "string") {
+        pfSay("in.badEvent", "no .message — keys [" + (arg ? Object.keys(arg).join(",") : "null") + "]");
+      }
+      pfRead(arg && arg.message);
+    });
+    pfSay("dialog.handler", "DialogMessageReceived registered");
     // The finder says `ready` as soon as its Office is up. Should that greeting
     // arrive in the gap before the handler above was registered, the window would
     // sit there with no cells, so the scope goes over unasked a moment later too.
     // Sending it twice costs nothing: `rows` keeps every tick whose cell and
     // value are unchanged.
-    setTimeout(() => { if (pfDialog && !pfGreeted) pfGreet(); }, 1500);
+    setTimeout(() => {
+      if (!pfDialog || pfGreeted) return;
+      pfSay("greet.unprompted", "no `ready` arrived in 1.5s — pressing the scope on the window anyway");
+      pfGreet();
+    }, 1500);
     pfDialog.addEventHandler(Office.EventType.DialogEventReceived, (arg) => {
       // 12006 is the user closing the window; anything else is a failure worth saying.
+      pfSay("dialog.closed", "code " + (arg && arg.error));
       pfDialog = null;
       pfSetStatus(arg.error === 12006 ? "Finder closed." : "Finder closed (" + arg.error + ").", arg.error !== 12006);
     });
@@ -282,18 +307,42 @@ function supportsDialog() {
 }
 
 function pfSend(msg) {
-  if (!pfDialog) return;
+  if (!pfDialog) { pfSay("send.noWindow", (msg && msg.t) + " — the finder is not open"); return; }
   for (const chunk of PFWire.encode(msg)) {
-    try { pfDialog.messageChild(chunk, { targetOrigin: pfOrigin }); }
-    catch { try { pfDialog.messageChild(chunk); } catch { /* window gone */ } }
+    if (!pfPost(chunk, "targetOrigin")) pfPost(chunk, "bare");
+  }
+}
+
+// How many chunks have gone each way, for the report header.
+let pfOut = 0, pfIn = 0;
+
+/** One chunk down to the window, by one named form of messageChild. */
+function pfPost(chunk, via) {
+  if (!pfDialog) return false;
+  try {
+    if (via === "bare") pfDialog.messageChild(chunk);
+    else if (via === "star") pfDialog.messageChild(chunk, { targetOrigin: "*" });
+    else pfDialog.messageChild(chunk, { targetOrigin: pfOrigin });
+    pfOut++;
+    pfSay("out.chunk", via + " " + chunk.length + "ch");
+    return true;
+  } catch (e) {
+    pfSay("out.threw", via + " — " + (e && e.message));
+    return false;
   }
 }
 
 // Fed one chunk at a time; it calls pfHandle once a whole message has arrived.
-const pfRead = PFWire.reader(pfHandle);
+const pfReader = PFWire.reader(pfHandle);
+function pfRead(raw) {
+  pfIn++;
+  pfSay("in.raw", typeof raw === "string" ? raw.length + "ch" : "not a string: " + typeof raw);
+  pfReader(raw);
+}
 
 /** Everything a freshly opened finder needs: the marker, and the cells. */
 function pfGreet() {
+  pfSay("greet", pfState.cells.length + " cells ready");
   pfGreeted = true;
   pfSend({ t: "colour", hex: pfHex });
   if (pfState.cells.length) pfSend({ t: "rows", sheet: pfState.sheet, scope: pfState.scope, cells: pfState.cells });
@@ -301,6 +350,10 @@ function pfGreet() {
 }
 
 function pfHandle(msg) {
+  pfSay("in." + (msg && msg.t), msg && msg.t === "ticks" ? (msg.hit + "/" + msg.all) : "");
+  if (msg.t === "pong") { pfPong(msg); return; }
+  if (msg.t === "log") { pfTakeLog(msg); return; }
+  if (msg.t === "ping") { pfSend({ t: "pong", n: msg.n, sentAt: msg.at, at: Date.now(), via: "pane" }); return; }
   if (msg.t === "ready") { pfGreet(); return; }
   if (msg.t === "pull") { pfReadScope(false); return; }
   if (msg.t === "colour") {
@@ -352,9 +405,11 @@ async function pfPaint(msg) {
       });
     }
 
+    pfSay("excel.paint", "filled " + fill.length + ", cleared " + strip.length + " on " + sheet);
     pfPainted = { sheet, refs: [...want] };
     pfSetStatus(`${msg.hit || 0} of ${msg.all || 0} ticked off.`);
   } catch (e) {
+    pfSay("excel.paint.threw", e && (e.stack || e.message));
     pfSetStatus("Could not colour the sheet: " + e.message, true);
   } finally {
     pfBusy = false;
@@ -378,6 +433,7 @@ function pfApply(ws, refs, hex) {
 
 /** Put the Excel cursor on one cell, switching sheets if it is on another. */
 async function pfGoto(sheet, ref) {
+  pfSay("excel.goto", (sheet || pfState.sheet) + "!" + ref);
   try {
     await Excel.run(async (ctx) => {
       const ws = ctx.workbook.worksheets.getItem(sheet || pfState.sheet);
@@ -385,7 +441,7 @@ async function pfGoto(sheet, ref) {
       ws.getRange(ref).select();
       await ctx.sync();
     });
-  } catch { /* the sheet was renamed or the cell is out of range */ }
+  } catch (e) { pfSay("excel.goto.failed", e && e.message); /* renamed sheet, or the cell is out of range */ }
 }
 
 /* ---------- hunting a printed value down on the sheet ---------- */
@@ -454,7 +510,8 @@ function pfScan(used, want, wantText) {
  */
 async function pfFind(msg) {
   const v = String((msg && msg.v) || "").trim();
-  if (!v) return;
+  pfSay("excel.find", v);
+  if (!v) { pfSay("excel.find.blank"); return; }
   const want = pfToNumber(v);
   const wantText = pfNorm(v);
   if (want === null && !wantText) { pfSend({ t: "found", msg: "Nothing to look for." }); return; }
@@ -489,14 +546,17 @@ async function pfFind(msg) {
     });
 
     if (!hit) {
+      pfSay("excel.find.miss", v);
       pfSetStatus(v + " is not on any sheet.");
       pfSend({ t: "found", msg: v + " — not found in this workbook." });
       return;
     }
+    pfSay("excel.find.hit", v + " at " + hit.sheet + "!" + hit.refs[0]);
     const many = hit.refs.length > 1 ? " (" + hit.refs.length + " cells)" : "";
     pfSetStatus("Found " + v + " at " + hit.sheet + "!" + hit.refs[0] + many + ".");
     pfSend({ t: "found", msg: v + "  →  " + hit.sheet + "!" + hit.refs[0] + many });
   } catch (e) {
+    pfSay("excel.find.threw", e && (e.stack || e.message));
     pfSetStatus("Could not look for " + v + ": " + e.message, true);
     pfSend({ t: "found", msg: "Could not look for " + v + "." });
   }
@@ -509,4 +569,151 @@ function pfPick(ws, refs) {
     return;
   }
   ws.getRange(refs[0]).select();
+}
+
+
+/* ---------- the bridge test, and the report ---------- */
+
+/**
+ * When the finder goes quiet there is nothing on either screen to say which
+ * direction went quiet, so this section makes the bridge testable on its own,
+ * with no PDF and no cells involved.
+ *
+ * **Test bridge** sends the same `ping` three times, once down each form of
+ * `messageChild` Office offers, each one labelled. `bridge.js` answers every
+ * ping it receives three times over, once down each form of `messageParent`,
+ * labelled the same way. Four seconds later the pane knows:
+ *
+ *  - nothing came back and the window's own log shows no ping — **the pane
+ *    cannot reach the window**;
+ *  - the window's log shows the ping but nothing came back — **the window
+ *    cannot reach the pane**, which is the failure that leaves a double-click
+ *    saying "Looking for … in Excel" for ever;
+ *  - some labels came back and others did not — the channel works, but only in
+ *    one of its forms, and `pfPost`/`rawPost` should prefer that one.
+ *
+ * The window's own log is fetched over the same bridge (`report` / `log`), so
+ * it is only in the pane's report when the return leg works at all. When it
+ * does not, the window prints its own — that is what its **Debug** drawer is
+ * for, and why neither end ever depends on the other to be able to speak.
+ */
+let pfPingN = 0;
+const pfPings = new Map();
+let pfFinderReport = "";
+
+function pfPing() {
+  if (!pfDialog) {
+    pfSetStatus("Open the finder first — there is nothing to test the bridge against.", true);
+    return;
+  }
+  const n = ++pfPingN;
+  const test = { at: Date.now(), back: [] };
+  pfPings.set(n, test);
+  pfSay("test.ping", "#" + n + " down all three forms");
+  const sent = [];
+  for (const via of ["targetOrigin", "bare", "star"]) {
+    let ok = true;
+    for (const chunk of PFWire.encode({ t: "ping", n, via, at: test.at })) ok = pfPost(chunk, via) && ok;
+    if (ok) sent.push(via);
+  }
+  pfSetStatus("Bridge test sent (" + (sent.join(", ") || "nothing — every form threw") + "). Waiting 4s…");
+  setTimeout(() => {
+    pfPings.delete(n);
+    const verdict = test.back.length
+      ? "Bridge test: the window answered in " + test.ms + " ms (" + test.back.join(", ") + ")."
+      : "Bridge test: no answer in 4s. The window→pane direction is not working — open the finder's Debug drawer and copy its report.";
+    pfSay("test.verdict", verdict);
+    pfSetStatus(verdict, !test.back.length);
+    // The window's own log, if it can still be asked for it.
+    pfSend({ t: "report" });
+  }, 4000);
+}
+
+function pfPong(msg) {
+  const test = pfPings.get(msg.n);
+  const ms = Date.now() - (msg.sentAt || Date.now());
+  pfSay("test.pong", "#" + msg.n + " via " + msg.via + " in " + ms + " ms");
+  if (!test) return;
+  if (!test.back.includes(msg.via)) test.back.push(msg.via);
+  test.ms = ms;
+}
+
+/** The finder's own log, sent over the bridge, kept for the pane's report. */
+function pfTakeLog(msg) {
+  pfFinderReport = String(msg.text || "");
+  pfSay("test.finderLog", pfFinderReport.length + " characters received from the window");
+  pfDebugPaint();
+}
+
+/** Both logs, one below the other — the whole picture where the bridge allows it. */
+function pfReport() {
+  const mine = window.PFDebug ? window.PFDebug.report() : "(the recorder did not load)";
+  return pfFinderReport
+    ? mine + "\n\n\n" + pfFinderReport
+    : mine + "\n\n(no report from the finder window — either it was never opened, or it cannot reach the pane. Copy its own Debug drawer instead.)";
+}
+
+/* ---------- the drawer ---------- */
+
+let pfDebugSoon = 0;
+
+function pfDebugPaint() {
+  const box = $("pf-dbg-log");
+  if (!box || box.closest("details") && !box.closest("details").open) return;
+  box.value = pfReport();
+  box.scrollTop = box.scrollHeight;
+}
+
+function initPfDebug() {
+  if (!window.PFDebug) return;
+  window.PFDebug.side = "task pane";
+  window.PFDebug.env(() => {
+    const req = (n, v) => { try { return Office.context.requirements.isSetSupported(n, v); } catch { return "?"; } };
+    return {
+      "pane url": window.location.href,
+      "pane origin": window.location.origin,
+      "finder home": PF_HOME,
+      "finder fallback": PF_FALLBACK,
+      "dialog origin": pfOrigin,
+      "dialog open": !!pfDialog,
+      "greeted": pfGreeted,
+      "Office host": String(Office.context.host) + " / " + String(Office.context.platform),
+      "DialogApi 1.1 / 1.2": req("DialogApi", "1.1") + " / " + req("DialogApi", "1.2"),
+      "ExcelApi 1.9": req("ExcelApi", "1.9"),
+      "scope": pfState.scope || "(none read yet)",
+      "cells in scope": pfState.cells.length,
+      "cells painted": pfPainted.refs.length + " on " + (pfPainted.sheet || "-"),
+      "chunks out / in": pfOut + " / " + pfIn
+    };
+  });
+
+  const drawer = $("pf-dbg");
+  const box = $("pf-dbg-log");
+  if (drawer) drawer.addEventListener("toggle", () => { if (drawer.open) pfDebugPaint(); });
+  window.PFDebug.onLine(() => {
+    clearTimeout(pfDebugSoon);
+    pfDebugSoon = setTimeout(pfDebugPaint, 200);
+  });
+
+  const on = (id, fn) => { const b = $(id); if (b) b.onclick = fn; };
+  on("pf-dbg-test", pfPing);
+  on("pf-dbg-pull", () => { pfSend({ t: "report" }); pfSetStatus("Asked the window for its log."); });
+  on("pf-dbg-copy", () => {
+    const text = pfReport();
+    pfDebugPaint();
+    if (box) { box.focus(); box.select(); }
+    const done = (ok) => pfSetStatus(ok
+      ? "Report copied — paste it into a message."
+      : "Could not copy automatically; the report is selected in the box, press Ctrl+C.", !ok);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => done(true), () => done(pfCopyFallback()));
+      return;
+    }
+    done(pfCopyFallback());
+  });
+  on("pf-dbg-clear", () => { window.PFDebug.clear(); pfFinderReport = ""; pfDebugPaint(); });
+}
+
+function pfCopyFallback() {
+  try { return document.execCommand("copy"); } catch { return false; }
 }
