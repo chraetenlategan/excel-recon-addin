@@ -35,9 +35,15 @@ const PF_TICK_KEY = "vdm-pdffinder:tick";
 const PF_MAX_CELLS = 10000;
 
 /**
- * Where the finder window is served from. This is the one line to change.
+ * Where the finder window is served from.
  *
- * Two rules Office enforces on a dialog, both worth knowing before moving it:
+ * Blank means **beside the pane** — the copy of `pdffinder.html` sitting next to
+ * this file, on the add-in's own origin. That is the right answer nearly always:
+ * the finder ships with the add-in, so wherever the pane came from the finder is
+ * already there, at the same version, over the same HTTPS the pane is trusted on.
+ *
+ * Set it to another origin only to serve the finder from elsewhere, and mind the
+ * two conditions Office puts on a dialog before doing so:
  *
  *  - **It must be HTTPS.** Office refuses a plain `http://` dialog outright
  *    (localhost is the only exemption). A LAN box needs a certificate the
@@ -46,17 +52,20 @@ const PF_MAX_CELLS = 10000;
  *  - **Cross-origin needs declaring.** A finder on a different origin from the
  *    pane can still message it, but only if that origin is listed in the
  *    manifest's `<AppDomains>` and both ends name each other in `targetOrigin`.
- *    Both are done: the domain is in `manifest.xml`, and the pane's origin
- *    rides in on the query string for `bridge.js` to answer to.
+ *    The pane's origin rides in on the query string for `bridge.js` to answer to;
+ *    the `<AppDomains>` entry has to be added by hand.
  *
- * If the configured home cannot be opened, the pane falls back to the copy
- * sitting beside it and says so, so a server that is down or still on HTTP
- * never costs anyone the feature.
+ * That host must also carry the whole finder — `pdffinder.html`, `pdffinder.css`,
+ * `pdffinder/`, `vendor/` and `assets/` — at this same version. A server holding
+ * some other app answers with its own page or a 404, and the window opens on
+ * nothing. If the configured home cannot be opened at all, the pane falls back to
+ * the copy beside it and says so.
  */
-const PF_BASE = "http://192.168.0.250:5173/";
+const PF_BASE = "";
 
+// Blank base means beside the pane, which is also where the fallback lives.
 const pfUrl = (base) => {
-  const u = new URL("pdffinder.html", base);
+  const u = new URL("pdffinder.html", base || window.location.href);
   u.searchParams.set("parent", window.location.origin);
   return u.href;
 };

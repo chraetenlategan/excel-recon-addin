@@ -142,25 +142,29 @@ sheet disagreeing with the column.
 This needs the **DialogApi 1.2** requirement set — Excel 2019 or Microsoft 365.
 The pane says so plainly on older builds; the other two tabs still work there.
 
-### Hosting the finder somewhere else
+### Where the finder is served from
 
-`PF_BASE` at the top of `pdffinder-pane.js` is where the finder window is served
-from — currently `http://192.168.0.250:5173/`. It is the one line to change, but
-Office puts two conditions on a dialog:
+The finder window is served from the **add-in's own origin** — the copy of
+`pdffinder.html` sitting beside `taskpane.html`, so it is always at the same
+version as the pane and always over the HTTPS the pane already loads on.
+
+`PF_BASE` at the top of `pdffinder-pane.js` is the one line to change to host it
+elsewhere. Office puts two conditions on a dialog before that will work:
 
 - **HTTPS only.** A plain `http://` dialog is refused outright (localhost is the
-  sole exemption), so that host needs a certificate the workstations trust before
-  it can serve the finder. `serve.py` exists for exactly that.
+  sole exemption), so that host needs a certificate the workstations trust.
+  `serve.py` exists for exactly that.
 - **Cross-origin must be declared.** A finder on a different origin from the pane
   can still message it, but only with that origin in the manifest's `<AppDomains>`
-  and both ends naming each other in `targetOrigin`. Both are in place: the domain
-  is listed in `manifest.xml`, and the pane passes its own origin on the query
-  string for `bridge.js` to answer to.
+  and both ends naming each other in `targetOrigin`. The pane passes its own
+  origin on the query string for `bridge.js` to answer to; the `<AppDomains>`
+  entry has to be added by hand.
 
-Until that host serves TLS the pane will fail to open it, **fall back to its own
-copy** of the finder and say so in the status line — so the feature keeps working
-either way. Serving it from the LAN also means copying `pdffinder.html`,
-`pdffinder.css`, `pdffinder/`, `vendor/` and `assets/logo.jpg` to that server.
+That host also has to carry the whole finder — `pdffinder.html`, `pdffinder.css`,
+`pdffinder/`, `vendor/` and `assets/` — at this same version. A server holding
+some *other* app answers with its own page or a 404 and the window opens on
+nothing, with no cells and no outlines. If the configured home cannot be opened
+at all, the pane falls back to its own copy and says so in the status line.
 
 ---
 

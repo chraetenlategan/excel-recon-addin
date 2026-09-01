@@ -85,9 +85,17 @@ is chunked by `wire.js` and reassembled on the other side. Messages:
 
 ## Where it is served from
 
-`PF_BASE` in `pdffinder-pane.js` is the finder's home and the one line to
-change. Office refuses a plain `http://` dialog (localhost excepted) and needs
-any other origin listed in the manifest's `<AppDomains>`, with both ends naming
-each other in `targetOrigin` — the pane puts its own origin on the query string
-and `bridge.js` replies to that. If the configured home will not open, the pane
-falls back to the copy beside it and says so.
+Beside the pane, on the add-in's own origin — `PF_BASE` in `pdffinder-pane.js`
+is blank and that is what blank means. The finder ships with the add-in, so it
+is always the same version as the pane and always on the HTTPS the pane already
+loads over.
+
+`PF_BASE` is the one line to change to serve it from elsewhere. Office refuses a
+plain `http://` dialog (localhost excepted) and needs any other origin listed in
+the manifest's `<AppDomains>`, with both ends naming each other in
+`targetOrigin` — the pane puts its own origin on the query string and
+`bridge.js` replies to that. Such a host must also carry the whole finder
+(`pdffinder.html`, `pdffinder.css`, `pdffinder/`, `vendor/`, `assets/`) at this
+same version: a server holding some other app answers with its own page or a
+404, and the window opens on nothing. If the configured home will not open at
+all, the pane falls back to the copy beside it and says so.
