@@ -31,12 +31,40 @@ let pfDialog = null;
 // when it has not.
 let pfGreeted = false;
 
+/* ---------- following the Excel cursor into the page ---------- */
+//
+// The other direction of the same idea: a cell picked in Excel is shown where
+// it is printed on the statement. Office gives an add-in no double-click on a
+// cell — `onSelectionChanged` is the whole of what it offers — so the gesture
+// is *selecting* a cell, which is the one an auditor makes anyway while reading
+// down a column.
+//
+// Nothing is ticked by it. Looking at a value and reconciling it are different
+// acts, and only the second may colour a cell.
+let pfFollowSel = true;
+// The pane moves the Excel cursor itself, for `goto` and `find`. Those moves
+// come back as selection changes like any other, and following them would have
+// the two windows chasing each other, so they are ignored while they settle.
+let pfSelfMove = 0;
+let pfSelSoon = 0;
+let pfLastSel = "";
+let pfWatching = false;
+
+const PF_FOLLOW_KEY = "vdm-pdffinder:follow";
+// Long enough for Office to deliver the echo of our own selection, short enough
+// that a real click straight afterwards is not swallowed.
+const PF_SELF_MOVE_MS = 500;
+
+/** Mark the next selection change as this pane's own doing. */
+function pfOwnMove() { pfSelfMove = Date.now(); }
+const pfIsOwnMove = () => Date.now() - pfSelfMove < PF_SELF_MOVE_MS;
+
 const PF_TICK_KEY = "vdm-pdffinder:tick";
 
 // Every step this file takes on the bridge is written down. `pdffinder/debug.js`
 // is loaded before it, so the recorder is already listening; the guard is only
 // there so the pane still runs if that file is ever dropped.
-const PF_BUILD = "2026-09-01b";
+const PF_BUILD = "2026-09-01c";
 const pfSay = (tag, d) => { if (window.PFDebug) window.PFDebug.log(tag, d); };
 const pfCodes = (s, n) => (window.PFDebug ? window.PFDebug.codes(s, n) : String(s).slice(0, n));
 if (window.PFDebug) window.PFDebug.file("pane", PF_BUILD);
@@ -98,8 +126,98 @@ function initPdfFinder() {
     if (saved) pfHex = JSON.parse(saved);
   } catch { /* first run */ }
 
+  try {
+    const saved = localStorage.getItem(PF_FOLLOW_KEY);
+    if (saved !== null) pfFollowSel = JSON.parse(saved);
+  } catch { /* first run */ }
+
+  const follow = $("pf-follow");
+  if (follow) {
+    follow.checked = pfFollowSel;
+    follow.onchange = () => {
+      pfFollowSel = follow.checked;
+      try { localStorage.setItem(PF_FOLLOW_KEY, JSON.stringify(pfFollowSel)); } catch { /* quota */ }
+      pfSay("follow.set", pfFollowSel);
+      if (pfFollowSel) { pfLastSel = ""; pfWatchSelection(); }
+    };
+  }
+
   $("pf-open").onclick = pfOpen;
   initPfDebug();
+}
+
+/**
+ * Start listening to the Excel cursor. Registered once and left in place —
+ * the handler does nothing at all unless the finder is open and the user has
+ * asked to be followed.
+ */
+function pfWatchSelection() {
+  if (pfWatching) return;
+  if (!supports("1.7")) {
+    pfSay("follow.unsupported", "ExcelApi 1.7 is needed for onSelectionChanged");
+    const follow = $("pf-follow");
+    if (follow) { follow.checked = false; follow.disabled = true; }
+    pfSetStatus("This version of Excel cannot report the cursor, so the PDF cannot follow it.", true);
+    return;
+  }
+  pfWatching = true;
+  Excel.run(async (ctx) => {
+    ctx.workbook.onSelectionChanged.add(pfSelectionChanged);
+    await ctx.sync();
+    pfSay("follow.watching", "onSelectionChanged registered");
+  }).catch((e) => {
+    pfWatching = false;
+    pfSay("follow.threw", e && e.message);
+  });
+}
+
+/**
+ * Arrowing down a column fires this on every cell, so the reading of the sheet
+ * is put off until the cursor settles. The window is only ever asked to *look*,
+ * which costs it a scroll and an outline.
+ */
+function pfSelectionChanged() {
+  if (!pfFollowSel || !pfDialog) return;
+  if (pfIsOwnMove()) { pfSay("follow.echo", "ignored — the pane moved the cursor itself"); return; }
+  clearTimeout(pfSelSoon);
+  pfSelSoon = setTimeout(pfSendSelection, 160);
+}
+
+/** Split "'My Sheet'!C12" into its two halves, quotes and all. */
+function pfSplitAddress(address) {
+  const text = String(address || "");
+  const bang = text.lastIndexOf("!");
+  if (bang < 0) return { sheet: pfState.sheet, ref: text };
+  let sheet = text.slice(0, bang);
+  if (sheet.startsWith("'") && sheet.endsWith("'")) sheet = sheet.slice(1, -1).replace(/''/g, "'");
+  return { sheet, ref: text.slice(bang + 1) };
+}
+
+/**
+ * The cell under the cursor, sent to the window to be found on the page. Only
+ * the first cell of a selection: a dragged block is one gesture, and its corner
+ * is what the user pointed at.
+ */
+async function pfSendSelection() {
+  if (!pfFollowSel || !pfDialog) return;
+  try {
+    await Excel.run(async (ctx) => {
+      const cell = ctx.workbook.getSelectedRange().getCell(0, 0);
+      cell.load(["address", "values", "text", "numberFormat"]);
+      await ctx.sync();
+
+      const { sheet, ref } = pfSplitAddress(cell.address);
+      const here = sheet + "!" + ref;
+      if (here === pfLastSel) return;          // the same cell, reselected
+      pfLastSel = here;
+
+      const v = pfCellValue(cell.values[0][0], cell.text[0][0], cell.numberFormat[0][0]);
+      pfSay("follow.look", here + " = " + (v === "" ? "(blank)" : v));
+      pfSend({ t: "look", sheet, ref, v, blank: v === "" });
+    });
+  } catch (e) {
+    pfSay("follow.read.threw", e && e.message);
+  }
 }
 
 /** Fill the sheet picker, keeping whatever was chosen if it is still there. */
@@ -283,6 +401,8 @@ function pfTry(url, next) {
     }
     pfDialog = res.value;
     pfGreeted = false;
+    pfLastSel = "";
+    if (pfFollowSel) pfWatchSelection();
     // Office hands the handler an event object, not the string the finder sent:
     // the chunk is on `arg.message`, and the reader wants that and nothing else.
     pfDialog.addEventHandler(Office.EventType.DialogMessageReceived, (arg) => {
@@ -463,6 +583,8 @@ function pfApply(ws, refs, hex) {
 /** Put the Excel cursor on one cell, switching sheets if it is on another. */
 async function pfGoto(sheet, ref) {
   pfSay("excel.goto", (sheet || pfState.sheet) + "!" + ref);
+  pfOwnMove();
+  pfLastSel = (sheet || pfState.sheet) + "!" + ref;
   try {
     await Excel.run(async (ctx) => {
       const ws = ctx.workbook.worksheets.getItem(sheet || pfState.sheet);
@@ -540,6 +662,7 @@ function pfScan(used, want, wantText) {
 async function pfFind(msg) {
   const v = String((msg && msg.v) || "").trim();
   pfSay("excel.find", v);
+  pfOwnMove();
   if (!v) { pfSay("excel.find.blank"); return; }
   const want = pfToNumber(v);
   const wantText = pfNorm(v);
@@ -569,6 +692,8 @@ async function pfFind(msg) {
         ws.activate();
         pfPick(ws, refs);
         await ctx.sync();
+        pfOwnMove();
+        pfLastSel = name + "!" + refs[0];
         hit = { sheet: name, refs };
         break;
       }
@@ -737,6 +862,8 @@ function initPfDebug() {
       "scope": pfState.scope || "(none read yet)",
       "cells in scope": pfState.cells.length,
       "cells painted": pfPainted.refs.length + " on " + (pfPainted.sheet || "-"),
+      "follow the cursor": pfFollowSel + (pfWatching ? " (watching)" : " (not watching)"),
+      "last cell followed": pfLastSel || "-",
       "chunks out / in": pfOut + " / " + pfIn
     };
   });

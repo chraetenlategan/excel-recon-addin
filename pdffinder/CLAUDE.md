@@ -22,6 +22,8 @@ This file covers the whole feature, both ends of it — the window's code lives 
 5. Clicking an outline ticks it off, and **its cell in Excel is filled** in the
    marker colour, straight away. Double-clicking any value on the page — in
    scope or not — puts the Excel cursor on it.
+6. And the other way about: **selecting a cell in Excel outlines that value on
+   the page** and scrolls to it. The two windows follow each other's cursor.
 
 ## Rules this feature is built on
 
@@ -40,6 +42,11 @@ window, which has room for them.
 tabs. `pfPainted` in `pdffinder-pane.js` is the exact list of cells the pane
 filled, so releasing a tick takes the colour off that cell and nothing else.
 No value, format or formula is touched.
+
+**Following the cursor never ticks anything.** A cell selected in Excel is
+outlined on the page and scrolled to, and that is all. Looking at a value and
+reconciling it are different acts, and only the second may colour a cell. The
+same rule the other way: `goto` moves the Excel cursor and paints nothing.
 
 **One cell claims one printed occurrence.** Three 50s in scope tick off three
 separate printed 50s; a fourth printing stays open. That is `claim.js`, and it
@@ -87,6 +94,7 @@ silence, greeting included. Messages:
 | finder | `goto` | Put the Excel cursor on one cell of the scope. |
 | finder | `find` | Look a printed value up anywhere in the workbook. |
 | pane | `found` | What that lookup landed on, for the line over the page. |
+| pane | `look` | `{sheet, ref, v}` — the cell the Excel cursor is on; show it on the page. |
 | either | `ping` / `pong` | The bridge test — see below. Answered by `bridge.js` itself. |
 | pane | `report` | Send me your log. |
 | finder | `log` | `{text}` — this window's log, for the pane's report. |
@@ -182,3 +190,29 @@ Two rules this section is built on, both learned the hard way:
 
 Recording is always on. It is a few hundred short strings in memory, and it
 means a failure five minutes old is still there when somebody thinks to look.
+
+## Following the Excel cursor
+
+Office gives an add-in **no double-click event on a cell** — `onSelectionChanged`
+is the whole of what it offers — so the gesture that finds a value on the page is
+*selecting* the cell, which is the one an auditor makes anyway while reading down
+a column. It is a checkbox in the pane (*Show the cell I select on the PDF*),
+remembered between sessions.
+
+Three things make it behave rather than thrash:
+
+- **The echo is ignored.** The pane moves the Excel cursor itself, for `goto` and
+  `find`. Those moves come back as selection changes like any other, and
+  following them would have the two windows chasing each other, so a move the
+  pane made is ignored for half a second (`pfOwnMove`).
+- **Arrowing down a column is debounced**, and the same cell selected twice
+  running is not sent twice.
+- **Only the first cell of a selection** is sent. A dragged block is one gesture
+  and its corner is what the user pointed at.
+
+On the window's side, a cell **in scope** is taken in hand exactly as clicking its
+mark would — so the arrow keys step it on to its next printing — and it lands on
+its own tick if it has one, otherwise on the first printing still going spare. A
+cell **outside the scope** (another sheet, another column) is outlined without
+being adopted: it has no row to belong to, and inventing one would put a value in
+the count that nobody asked to reconcile.

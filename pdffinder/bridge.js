@@ -21,7 +21,7 @@ let parentOrigin = "";
 let ui = null;
 let inbound = 0, outbound = 0;
 
-const BUILD = "2026-09-01b";
+const BUILD = "2026-09-01c";
 const say = (tag, d) => { if (window.PFDebug) window.PFDebug.log(tag, d); };
 const codes = (s, n) => (window.PFDebug ? window.PFDebug.codes(s, n) : String(s).slice(0, n));
 if (window.PFDebug) window.PFDebug.file("bridge", BUILD);

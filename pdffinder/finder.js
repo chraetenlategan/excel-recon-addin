@@ -144,6 +144,67 @@ bridge.on('rows', msg => {
 
 bridge.on('colour', msg => setTick(msg.hex, false));
 
+/* ---------- a cell picked in Excel, found on the page ---------- */
+
+/** The mark node for one occurrence, so it can be rung without redrawing. */
+function markNode(v, n){
+  return [...el.pages.querySelectorAll('.mk')].find(m => m.dataset.v === v && +m.dataset.hit === n);
+}
+
+/** Ring one occurrence briefly, whether or not any cell has claimed it. */
+function flashHit(v, n){
+  const node = markNode(v, n);
+  if(node){ node.classList.add('flash'); setTimeout(() => node.classList.remove('flash'), 560); }
+}
+
+/** The first occurrence nobody has ticked off, or the first one at all. */
+function freeHit(hits){
+  const taken = claims(S.rows);
+  const n = hits.findIndex(h => taken.get(sig(h)) === undefined);
+  return n < 0 ? 0 : n;
+}
+
+/**
+ * The other direction: Excel says which cell the cursor is on, and the page
+ * shows where that value is printed.
+ *
+ * A cell of the scope is taken in hand, exactly as clicking its mark would —
+ * so the arrow keys step it on to its next printing, and its own tick shows
+ * navy. A cell outside the scope is outlined without being adopted: it has no
+ * row to belong to, and inventing one would put a value in the count that the
+ * user never asked to reconcile.
+ *
+ * Nothing is ever ticked here. Excel moved a cursor; it did not reconcile.
+ */
+bridge.on('look', msg => {
+  const ref = msg.ref || '';
+  const v = String(msg.v === undefined || msg.v === null ? '' : msg.v);
+  const where = (msg.sheet ? msg.sheet + '!' : '') + ref;
+
+  if(msg.blank || !v.trim()){ toast(where + ' is blank.'); return; }
+  if(!S.pages.length){ toast('Open a PDF and ' + where + ' can be found on it.'); return; }
+
+  const mine = (!msg.sheet || msg.sheet === S.sheet) ? S.rows.findIndex(r => r.ref === ref) : -1;
+  const hits = hitsFor(v);
+
+  if(mine > -1){ S.active = mine; S.peek = null; }
+  else { S.active = -1; S.peek = { v }; }
+  redraw();
+
+  if(!hits.length){
+    toast(where + '  —  ' + v + ' is not printed on this document.');
+    return;
+  }
+
+  // its own tick if it has one, otherwise the first printing still going spare
+  const n = (mine > -1 && S.rows[mine].mark)
+    ? Math.max(0, hits.findIndex(h => sig(h) === sig(S.rows[mine].mark)))
+    : freeHit(hits);
+  scrollTo(hits[n], false);
+  flashHit(v, n);
+  toast(where + '  →  ' + v + (hits.length > 1 ? '  (' + hits.length + ' on the page)' : ''));
+});
+
 /* ---------- document ---------- */
 async function loadFile(file){
   if(!file) return;

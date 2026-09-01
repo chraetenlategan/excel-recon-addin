@@ -12,7 +12,7 @@
  * ends can never drift apart.
  */
 (function (global) {
-  const BUILD = "2026-09-01b";
+  const BUILD = "2026-09-01c";
 
   // The recorder is loaded before this file, but never assume it: a codec that
   // throws while logging is worse than a codec that does not log, and that is
