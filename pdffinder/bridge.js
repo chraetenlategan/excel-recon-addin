@@ -195,7 +195,7 @@ export function start() {
       if (!rawPost(chunk, "targetOrigin")) rawPost(chunk, "bare");
     };
 
-    send({ t: "ready" });
+    send({ t: "ready", build: BUILD, wire: window.PFWire && window.PFWire.BUILD });
     say("bridge.open", "flushing " + outbox.length + " queued");
     while (outbox.length) send(outbox.shift());
   });

@@ -383,7 +383,7 @@ function pfHandle(msg) {
   if (msg.t === "pong") { pfPong(msg); return; }
   if (msg.t === "log") { pfTakeLog(msg); return; }
   if (msg.t === "ping") { pfSend({ t: "pong", n: msg.n, sentAt: msg.at, at: Date.now(), via: "pane" }); return; }
-  if (msg.t === "ready") { pfGreet(); return; }
+  if (msg.t === "ready") { pfCheckBuild(msg); pfGreet(); return; }
   if (msg.t === "pull") { pfReadScope(false); return; }
   if (msg.t === "colour") {
     pfHex = msg.hex;
@@ -687,6 +687,23 @@ function pfReport() {
   return pfFinderReport
     ? mine + "\n\n\n" + pfFinderReport
     : mine + "\n\n(no report from the finder window — either it was never opened, or it cannot reach the pane. Copy its own Debug drawer instead.)";
+}
+
+/**
+ * The window is served from the same place as the pane, so the two are the same
+ * version in the repository and can still be different versions in memory: a
+ * WebView holds a file back, and the older half behaves in ways the newer half
+ * cannot account for. That is not a thing anyone guesses; it has to be said.
+ */
+function pfCheckBuild(msg) {
+  const theirs = (msg && msg.build) || "?";
+  const theirWire = (msg && msg.wire) || "?";
+  const mine = PF_BUILD, myWire = (window.PFWire && window.PFWire.BUILD) || "?";
+  pfSay("build.window", "window " + theirs + " / wire " + theirWire + " — pane " + mine + " / wire " + myWire);
+  if (theirs === mine && theirWire === myWire) return;
+  pfSay("build.MISMATCH", "the two ends are running different builds");
+  pfSetStatus("The finder window is running a different build (" + theirs + ") to the pane (" + mine +
+    "). Close it, clear the Office web cache and reopen — you are testing two versions at once.", true);
 }
 
 /* ---------- the drawer ---------- */

@@ -155,7 +155,16 @@ lines will say so; this is the one test that does not rest on the thing being
 tested.
 
 Every file of the bridge registers its build (`PFDebug.file`), and the report
-prints them on its second line. A WebView holding one file back while the others
+prints them on its second line. The window also puts its build in `ready`, and
+the pane says so in plain words when the two disagree.
+
+GitHub Pages serves these files with `Cache-Control: max-age=600`, so for ten
+minutes after a push the WebView can keep handing out the previous copy — long
+enough to test a fix that is already deployed and conclude it did not work. To
+force the issue, close Excel and empty
+`%LOCALAPPDATA%\Microsoft\Office.0\Wef`, or simply wait the ten minutes.
+Either way, **read the `builds:` line before reading anything else**: a report
+with no `builds:` line at all is an old build by definition. A WebView holding one file back while the others
 move on produces symptoms that make no sense — most of all a codec that drops
 messages without complaint, because the copy doing the dropping is the copy
 without the complaints in it. **Check that line first.**
