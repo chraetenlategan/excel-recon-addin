@@ -69,7 +69,10 @@ page; `pfPaint` diffs against what it last painted.
 | `pdffinder/wire.js` | The chunking codec both ends speak — loaded by both. |
 
 Office gives a dialog one string-sized wire in each direction, so every message
-is chunked by `wire.js` and reassembled on the other side. Messages:
+is chunked by `wire.js` and reassembled on the other side. Both inbound handlers
+are handed an **event object**, never the string that was sent — the chunk is on
+`arg.message`, and feeding the reader anything else drops every message in
+silence, greeting included. Messages:
 
 | From | Message | Meaning |
 | --- | --- | --- |

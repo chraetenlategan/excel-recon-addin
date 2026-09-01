@@ -27,6 +27,9 @@ const pfState = { sheet: "", scope: "", cells: [] };
 let pfPainted = { sheet: "", refs: [] };
 let pfHex = "#FFE94D";
 let pfDialog = null;
+// Whether the open window has said hello, so the scope is only pressed on it
+// when it has not.
+let pfGreeted = false;
 
 const PF_TICK_KEY = "vdm-pdffinder:tick";
 
@@ -256,7 +259,16 @@ function pfTry(url, next) {
       pfSetStatus(PF_BASE + " could not be opened — using the copy beside the pane.");
     }
     pfDialog = res.value;
-    pfDialog.addEventHandler(Office.EventType.DialogMessageReceived, pfRead);
+    pfGreeted = false;
+    // Office hands the handler an event object, not the string the finder sent:
+    // the chunk is on `arg.message`, and the reader wants that and nothing else.
+    pfDialog.addEventHandler(Office.EventType.DialogMessageReceived, (arg) => pfRead(arg && arg.message));
+    // The finder says `ready` as soon as its Office is up. Should that greeting
+    // arrive in the gap before the handler above was registered, the window would
+    // sit there with no cells, so the scope goes over unasked a moment later too.
+    // Sending it twice costs nothing: `rows` keeps every tick whose cell and
+    // value are unchanged.
+    setTimeout(() => { if (pfDialog && !pfGreeted) pfGreet(); }, 1500);
     pfDialog.addEventHandler(Office.EventType.DialogEventReceived, (arg) => {
       // 12006 is the user closing the window; anything else is a failure worth saying.
       pfDialog = null;
@@ -277,15 +289,19 @@ function pfSend(msg) {
   }
 }
 
+// Fed one chunk at a time; it calls pfHandle once a whole message has arrived.
 const pfRead = PFWire.reader(pfHandle);
 
+/** Everything a freshly opened finder needs: the marker, and the cells. */
+function pfGreet() {
+  pfGreeted = true;
+  pfSend({ t: "colour", hex: pfHex });
+  if (pfState.cells.length) pfSend({ t: "rows", sheet: pfState.sheet, scope: pfState.scope, cells: pfState.cells });
+  else pfReadScope(false);
+}
+
 function pfHandle(msg) {
-  if (msg.t === "ready") {
-    pfSend({ t: "colour", hex: pfHex });
-    if (pfState.cells.length) pfSend({ t: "rows", sheet: pfState.sheet, scope: pfState.scope, cells: pfState.cells });
-    else pfReadScope(false);
-    return;
-  }
+  if (msg.t === "ready") { pfGreet(); return; }
   if (msg.t === "pull") { pfReadScope(false); return; }
   if (msg.t === "colour") {
     pfHex = msg.hex;
