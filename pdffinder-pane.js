@@ -36,7 +36,16 @@ const PF_TICK_KEY = "vdm-pdffinder:tick";
 // Every step this file takes on the bridge is written down. `pdffinder/debug.js`
 // is loaded before it, so the recorder is already listening; the guard is only
 // there so the pane still runs if that file is ever dropped.
+const PF_BUILD = "2026-09-01b";
 const pfSay = (tag, d) => { if (window.PFDebug) window.PFDebug.log(tag, d); };
+const pfCodes = (s, n) => (window.PFDebug ? window.PFDebug.codes(s, n) : String(s).slice(0, n));
+if (window.PFDebug) window.PFDebug.file("pane", PF_BUILD);
+
+// The uncoded probe, and the sample it carries. Both ends know the same string,
+// so either can say whether what arrived is what left.
+const PF_RAW_PROBE = "PFRAW|";
+const PF_RAW_BACK = "PFRAWBACK|";
+const PF_RAW_SAMPLE = "a\tb c\u00a0d—é|end";
 
 // A whole column of a large book is more than anyone reconciles against one
 // statement, and every value has to be searched for on every page.
@@ -336,8 +345,28 @@ function pfPost(chunk, via) {
 const pfReader = PFWire.reader(pfHandle);
 function pfRead(raw) {
   pfIn++;
-  pfSay("in.raw", typeof raw === "string" ? raw.length + "ch" : "not a string: " + typeof raw);
+  if (typeof raw !== "string") { pfSay("in.raw", "not a string: " + typeof raw); return; }
+  pfSay("in.raw", raw.length + "ch — head: " + pfCodes(raw, 44));
+  // The echo of a raw probe never goes near the codec — that is the point of it.
+  if (raw.slice(0, PF_RAW_BACK.length) === PF_RAW_BACK) { pfRawBack(raw); return; }
   pfReader(raw);
+}
+
+/**
+ * What the window says it received, and what came back of it. Between the two
+ * lines this writes, the exact characters at every stage of a round trip are on
+ * the record: what the pane sent, what the window saw, what returned.
+ */
+function pfRawBack(raw) {
+  const parts = raw.slice(PF_RAW_BACK.length).split("|");
+  const verdict = parts[0];
+  const returned = raw.slice(raw.indexOf("|", raw.indexOf("|", PF_RAW_BACK.length) + 1) + 1);
+  pfSay("probe.back", "the window saw it " + verdict.toUpperCase() +
+    " as " + parts[1] + " — and it came home " +
+    (returned === PF_RAW_SAMPLE ? "INTACT" : "MANGLED: " + pfCodes(returned, 60)));
+  pfSetStatus(verdict === "intact" && returned === PF_RAW_SAMPLE
+    ? "Raw echo: the channel carries a string unharmed, both ways."
+    : "Raw echo: the channel ALTERS the string — that is the fault. See the report.", verdict !== "intact");
 }
 
 /** Everything a freshly opened finder needs: the marker, and the cells. */
@@ -609,6 +638,13 @@ function pfPing() {
   const n = ++pfPingN;
   const test = { at: Date.now(), back: [] };
   pfPings.set(n, test);
+
+  // The raw probe goes first and answers for itself: if the channel cannot
+  // carry a tab, no codec built on tabs will ever work, and the pings behind it
+  // will fail for that reason and no other.
+  pfSay("probe.out", pfCodes(PF_RAW_SAMPLE, 60));
+  pfPost(PF_RAW_PROBE + PF_RAW_SAMPLE, "targetOrigin");
+
   pfSay("test.ping", "#" + n + " down all three forms");
   const sent = [];
   for (const via of ["targetOrigin", "bare", "star"]) {
@@ -670,6 +706,7 @@ function initPfDebug() {
   window.PFDebug.env(() => {
     const req = (n, v) => { try { return Office.context.requirements.isSetSupported(n, v); } catch { return "?"; } };
     return {
+      "pane build": PF_BUILD + " (wire " + (window.PFWire && window.PFWire.BUILD || "?") + ")",
       "pane url": window.location.href,
       "pane origin": window.location.origin,
       "finder home": PF_HOME,
@@ -697,6 +734,12 @@ function initPfDebug() {
 
   const on = (id, fn) => { const b = $(id); if (b) b.onclick = fn; };
   on("pf-dbg-test", pfPing);
+  on("pf-dbg-raw", () => {
+    if (!pfDialog) { pfSetStatus("Open the finder first.", true); return; }
+    pfSay("probe.out", pfCodes(PF_RAW_SAMPLE, 60));
+    pfPost(PF_RAW_PROBE + PF_RAW_SAMPLE, "targetOrigin");
+    pfSetStatus("Raw echo sent — no codec involved. Watch the report.");
+  });
   on("pf-dbg-pull", () => { pfSend({ t: "report" }); pfSetStatus("Asked the window for its log."); });
   on("pf-dbg-copy", () => {
     const text = pfReport();

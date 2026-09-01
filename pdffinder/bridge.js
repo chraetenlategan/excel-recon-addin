@@ -21,7 +21,22 @@ let parentOrigin = "";
 let ui = null;
 let inbound = 0, outbound = 0;
 
+const BUILD = "2026-09-01b";
 const say = (tag, d) => { if (window.PFDebug) window.PFDebug.log(tag, d); };
+const codes = (s, n) => (window.PFDebug ? window.PFDebug.codes(s, n) : String(s).slice(0, n));
+if (window.PFDebug) window.PFDebug.file("bridge", BUILD);
+
+/**
+ * A string sent home with no codec around it at all — no chunk header, no JSON,
+ * nothing that could be blamed on this end's own encoding. What comes back from
+ * a round trip of one of these is what the Office channel really does to a
+ * string, and that is the one fact the whole bridge rests on.
+ */
+const RAW_PROBE = "PFRAW|";
+const RAW_BACK = "PFRAWBACK|";
+// tab, then a space, a non-breaking space, an em dash and an accent — the
+// characters most likely to be eaten, and the tab is the one that matters.
+const RAW_SAMPLE = "a\tb c\u00a0d—é|end";
 
 /** Register a handler for one message type from the pane. */
 export function on(type, fn) {
@@ -43,6 +58,15 @@ export function send(msg) {
  * and it is exported so the finder can be driven — and looked at — in an
  * ordinary browser tab with no Excel behind it.
  */
+/** Answer a raw probe with what actually arrived, uncoded, so nothing can hide it. */
+function rawEcho(text) {
+  const body = text.slice(RAW_PROBE.length);
+  const intact = body === RAW_SAMPLE;
+  say("probe.in", (intact ? "INTACT" : "MANGLED") + " " + body.length + "ch: " + codes(body, 60));
+  const reply = RAW_BACK + (intact ? "intact" : "mangled") + "|" + codes(body, 60) + "|" + body;
+  for (const via of ["targetOrigin", "bare", "star"]) rawPost(reply, via);
+}
+
 export function receive(msg) {
   inbound++;
   const t = msg && msg.t;
@@ -137,10 +161,14 @@ export function start() {
       ui.addHandlerAsync(
         Office.EventType.DialogParentMessageReceived,
         (arg) => {
-          say("in.raw", (arg && typeof arg.message === "string")
-            ? arg.message.length + "ch"
-            : "no .message — keys [" + (arg ? Object.keys(arg).join(",") : "null") + "]");
-          read(arg && arg.message);
+          const raw = arg && arg.message;
+          if (typeof raw !== "string") {
+            say("in.raw", "no .message — keys [" + (arg ? Object.keys(arg).join(",") : "null") + "]");
+            return;
+          }
+          say("in.raw", raw.length + "ch — head: " + codes(raw, 44));
+          if (raw.slice(0, RAW_PROBE.length) === RAW_PROBE) { rawEcho(raw); return; }
+          read(raw);
         },
         // Without this callback a refused registration is silent, and a finder
         // that hears nothing looks exactly like a pane that says nothing.

@@ -147,5 +147,29 @@ nobody was catching.
 report — but only where the return leg works at all, which is exactly the case
 where it is least needed. When it does not, copy each end separately.
 
+**Raw echo** sends one plain string with no codec around it at all — a tab, a
+space, a non-breaking space, an em dash and an accent — and the window echoes
+back both its own reading of it and the string itself. If the channel alters a
+string, every codec built on tabs is doomed and no amount of reading `wire.*`
+lines will say so; this is the one test that does not rest on the thing being
+tested.
+
+Every file of the bridge registers its build (`PFDebug.file`), and the report
+prints them on its second line. A WebView holding one file back while the others
+move on produces symptoms that make no sense — most of all a codec that drops
+messages without complaint, because the copy doing the dropping is the copy
+without the complaints in it. **Check that line first.**
+
+Two rules this section is built on, both learned the hard way:
+
+- **Logging must never be able to break the thing it logs.** `wire.js` shipped
+  once calling a `say` that was never defined; the throw landed on the line
+  after a successful decode, so every message arrived and none was delivered,
+  and the log that would have said so was the code that was broken. `say` and
+  `codes` there swallow their own faults for that reason.
+- **A handler's fault is not a dropped message.** `wire.js` catches what
+  `onMessage` throws and logs it as `wire.handlerThrew`, so the two can never
+  again be mistaken for one another.
+
 Recording is always on. It is a few hundred short strings in memory, and it
 means a failure five minutes old is still there when somebody thinks to look.
