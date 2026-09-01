@@ -84,6 +84,13 @@ Reconcile a column against a **PDF** without reading the statement line by line.
    on it) and every one of those values is outlined where it is printed.
 4. Tick an occurrence off and **its cell in Excel is filled**, straight away.
 
+Double-clicking a value on the page works the other way round: whatever is
+printed under the pointer is found on the sheet and the Excel cursor lands on
+it — the source sheet first, then the rest of the workbook, and every matching
+cell at once where there is more than one. It need not be one of the cells you
+picked, so a figure on the statement that is nowhere in your selection can still
+be traced back to the workbook. Only the selection moves; nothing is coloured.
+
 Leave the pane open while you work — it is the pane, not the finder window, that
 colours the cells. **Clear ticks** takes the colour off exactly the cells it put
 it on, and nothing else.
@@ -94,7 +101,8 @@ it on, and nothing else.
 | Double-click a row (or `Enter`) | Ticks off **one** occurrence — and fills that cell in Excel |
 | Double-click it again (or `→`) | Steps that row on to the next free occurrence |
 | Click an outline on the page | Ticks it off against the first row waiting for it |
-| Double-click a highlight on the page | Selects its cell in Excel |
+| Double-click a highlight on the page | Puts the Excel cursor on its cell |
+| Double-click **anything else** on the page | Looks that printed value up in the workbook and selects the cell |
 | Right-click either side (or `Delete`) | Releases that row's tick, and its fill |
 | **Use Excel selection** | Re-reads whatever is selected in Excel now |
 | The coloured dot | Picks the tick colour — the same colour Excel fills with |

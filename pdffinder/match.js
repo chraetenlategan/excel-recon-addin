@@ -121,6 +121,31 @@ export function findInPage(words, needle, exact){
   return hits;
 }
 
+/**
+ * The printed value under a point on the page, in page-point coordinates.
+ *
+ * A word on its own, except for figures: an amount printed as `1 234,56` is
+ * three words on the page and one value on the statement, so the numeric
+ * fragments printed alongside the one under the pointer come with it.
+ *
+ * @returns {null|{t,i,j,x,y,w,h}} the value and its box, or null off any word
+ */
+export function valueAt(words, x, y){
+  let at = -1;
+  for(let k = 0; k < words.length; k++){
+    const w = words[k];
+    if(x >= w.x - 1 && x <= w.x + w.w + 1 && y >= w.y - 1 && y <= w.y + w.h + 1){ at = k; break; }
+  }
+  if(at < 0) return null;
+
+  let i = at, j = at;
+  if(toNumber(words[at].t) !== null){
+    while(i > 0 && adjacent(words[i - 1], words[i]) && FRAGMENT.test(words[i - 1].t)) i--;
+    while(j < words.length - 1 && adjacent(words[j], words[j + 1]) && FRAGMENT.test(words[j + 1].t)) j++;
+  }
+  return { t: words.slice(i, j + 1).map(w => w.t).join(''), i, j, ...union(words, i, j) };
+}
+
 /** Search every page. @returns [{page,x,y,w,h}] in reading order */
 export function findAll(pages, needle, exact){
   const out = [];

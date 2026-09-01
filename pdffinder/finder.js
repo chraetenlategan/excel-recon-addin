@@ -10,7 +10,7 @@
 // occurrence, so three 50s tick off three separate printed 50s.
 
 import { openPdf, renderPage, ocrPage, needsOcr } from './pdfdoc.js';
-import { findAll, toNumber } from './match.js';
+import { findAll, toNumber, toText, valueAt } from './match.js';
 import { load, save, drop } from './store.js';
 import { sig, claims, ordinal, free, claimNext, claimHit } from './claim.js';
 import * as bridge from './bridge.js';
@@ -22,7 +22,7 @@ const el = {
   cells: $('cells'), nameBox: $('nameBox'), fxVal: $('fxVal'), srcName: $('srcName'),
   empty: $('empty'), split: $('split'),
   tick: $('btnTick'), pick: $('tickPick'), any: $('tickAny'),
-  viewer: $('viewer'), pages: $('pages'), drop: $('drop'),
+  viewer: $('viewer'), pages: $('pages'), drop: $('drop'), toast: $('toast'),
   bar: $('bar'), barFill: $('barFill')
 };
 
@@ -359,6 +359,71 @@ function flash(ri){
   if(node){ node.classList.add('flash'); setTimeout(() => node.classList.remove('flash'), 560); }
 }
 
+/* ---------- looking a printed value up in Excel ---------- */
+
+// A line of feedback over the page: what a double-click on the PDF found, or
+// did not find, on the sheet. It says itself and goes away.
+let toastSoon = 0;
+function toast(text){
+  if(!el.toast) return;
+  el.toast.textContent = text;
+  el.toast.hidden = false;
+  clearTimeout(toastSoon);
+  toastSoon = setTimeout(() => { el.toast.hidden = true; }, 3200);
+}
+
+bridge.on('found', msg => toast(msg.msg || ''));
+
+/** The printed value under a click, whatever the page prints there. */
+function valueUnder(e){
+  const node = e.target.closest('.page');
+  if(!node) return null;
+  const p = S.pages.findIndex(pg => pg.node === node);
+  const pg = S.pages[p];
+  if(!pg || !pg.words.length) return null;
+  const box = node.getBoundingClientRect();
+  const found = valueAt(pg.words,
+    (e.clientX - box.left) / box.width * pg.width,
+    (e.clientY - box.top) / box.height * pg.height);
+  return found && found.t.trim() ? { ...found, p } : null;
+}
+
+/** Two printed strings, or a printed string and a cell, saying the same thing. */
+function sameValue(a, b){
+  const na = toNumber(a), nb = toNumber(b);
+  if(na !== null || nb !== null) return na !== null && nb !== null && Math.abs(na - nb) < 0.005;
+  const ta = toText(a);
+  return ta.length > 0 && ta === toText(b);
+}
+
+/**
+ * Take a value off the page and put the Excel cursor on it.
+ *
+ * A value the column already carries is one of these rows, so the row is
+ * selected and its own cell is the answer. Anything else is not in the
+ * selection at all — the pane is asked to hunt it down on the sheet, which is
+ * how a figure printed on the statement but never picked out in Excel can
+ * still be found there.
+ */
+function lookUp(v){
+  const ri = S.rows.findIndex(r => sameValue(r.v, v));
+  if(ri > -1){
+    select(ri, { near: true, silent: true });
+    const r = S.rows[ri];
+    if(r.ref){
+      bridge.send({ t: 'goto', sheet: S.sheet, ref: r.ref });
+      toast(v + '  →  ' + (S.sheet ? S.sheet + '!' : '') + r.ref);
+    }
+    return;
+  }
+  // outline every printing of it while Excel is looked through
+  S.peek = { v };
+  hitsFor(v);
+  redraw();
+  bridge.send({ t: 'find', sheet: S.sheet, v });
+  toast('Looking for ' + v + ' in Excel…');
+}
+
 /* ---------- selection ---------- */
 function select(ri, opts){
   const o = opts || {};
@@ -527,9 +592,17 @@ el.pages.addEventListener('click', e => {
 });
 el.pages.addEventListener('dblclick', e => {
   const mk = e.target.closest('.mk');
-  if(!mk) return;
+  if(!mk){
+    // anywhere else on the page: whatever is printed under the pointer, found
+    // on the sheet even when it was never part of the selection
+    const found = valueUnder(e);
+    if(!found) return;
+    e.preventDefault();
+    lookUp(found.t);
+    return;
+  }
   e.preventDefault();
-  // a double-click on the page finds the value on the sheet
+  // a double-click on a marked value finds it on the sheet
   const ri = mk.dataset.ri !== undefined
     ? +mk.dataset.ri
     : give(mk.dataset.v, hitsFor(mk.dataset.v)[+mk.dataset.hit]);
@@ -537,7 +610,9 @@ el.pages.addEventListener('dblclick', e => {
   S.active = ri;
   redraw();
   reveal(ri, 'center');
-  follow(ri);
+  // an explicit double-click asks for the cell, whether or not rows follow
+  const r = S.rows[ri];
+  if(r && r.ref) bridge.send({ t: 'goto', sheet: S.sheet, ref: r.ref });
   settle();
 });
 el.pages.addEventListener('contextmenu', e => {

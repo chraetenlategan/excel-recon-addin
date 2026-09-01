@@ -227,6 +227,7 @@ function pfHandle(msg) {
     return;
   }
   if (msg.t === "goto") { pfGoto(msg.sheet, msg.ref); return; }
+  if (msg.t === "find") { pfFind(msg); return; }
   if (msg.t === "ticks") { pfPaint(msg); return; }
 }
 
@@ -304,6 +305,129 @@ async function pfGoto(sheet, ref) {
       await ctx.sync();
     });
   } catch { /* the sheet was renamed or the cell is out of range */ }
+}
+
+/* ---------- hunting a printed value down on the sheet ---------- */
+
+// A value double-clicked on the page need not be one of the selected cells, so
+// this looks through the whole sheet. Enough matches to point at, not enough to
+// take all afternoon selecting.
+const PF_FIND_MAX = 200;
+
+/** The pane's own copy of the finder's number parser — 1 234,56 / (1.234,56) / 12.34- */
+function pfToNumber(raw) {
+  if (raw === null || raw === undefined) return null;
+  let s = String(raw).trim().replace(/[R$€£¥]/gi, "").replace(/\s| |'/g, "");
+  if (!s) return null;
+  let neg = false;
+  if (/^\(.*\)$/.test(s)) { neg = true; s = s.slice(1, -1); }
+  if (s.startsWith("-")) { neg = !neg; s = s.slice(1); }
+  if (s.endsWith("-")) { neg = !neg; s = s.slice(0, -1); }
+  if (s.endsWith("%")) return null;
+  if (!/^[\d.,]+$/.test(s) || !/\d/.test(s)) return null;
+  const last = Math.max(s.lastIndexOf("."), s.lastIndexOf(","));
+  let intPart = s, decPart = "";
+  if (last > -1 && /^\d{1,2}$/.test(s.slice(last + 1))) { intPart = s.slice(0, last); decPart = s.slice(last + 1); }
+  intPart = intPart.replace(/[.,]/g, "");
+  if (!/^\d*$/.test(intPart) || !/^\d*$/.test(decPart)) return null;
+  if (intPart === "" && decPart === "") return null;
+  const n = Number((intPart || "0") + (decPart ? "." + decPart : ""));
+  if (!isFinite(n)) return null;
+  return neg ? -n : n;
+}
+
+const pfNorm = (raw) => String(raw === null || raw === undefined ? "" : raw).toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/** Every cell of one used range that says the same thing as the printed value. */
+function pfScan(used, want, wantText) {
+  const refs = [];
+  const vals = used.values, texts = used.text;
+  for (let r = 0; r < vals.length; r++) {
+    for (let c = 0; c < vals[r].length; c++) {
+      const raw = vals[r][c];
+      if (raw === null || raw === undefined || raw === "") continue;
+      const shown = String(texts[r][c] === undefined ? raw : texts[r][c]);
+      let ok;
+      if (want !== null) {
+        // an amount matches on its value, however either side prints it
+        const n = typeof raw === "number" ? raw : pfToNumber(shown);
+        ok = n !== null && Math.abs(n - want) < 0.005;
+      } else {
+        ok = wantText.length > 0 && pfNorm(shown) === wantText;
+      }
+      if (ok) {
+        refs.push(colLetter(used.columnIndex + c) + (used.rowIndex + r + 1));
+        if (refs.length >= PF_FIND_MAX) return refs;
+      }
+    }
+  }
+  return refs;
+}
+
+/**
+ * Find a value printed on the PDF somewhere on the workbook and put the Excel
+ * selection on it — the sheet the cells came from first, then the rest, so a
+ * figure on the statement that was never highlighted can still be pointed at.
+ *
+ * Only the selection moves. Nothing is coloured, so nothing has to be undone.
+ */
+async function pfFind(msg) {
+  const v = String((msg && msg.v) || "").trim();
+  if (!v) return;
+  const want = pfToNumber(v);
+  const wantText = pfNorm(v);
+  if (want === null && !wantText) { pfSend({ t: "found", msg: "Nothing to look for." }); return; }
+
+  try {
+    const first = msg.sheet || pfState.sheet;
+    let hit = null;
+    await Excel.run(async (ctx) => {
+      const sheets = ctx.workbook.worksheets;
+      sheets.load("items/name");
+      await ctx.sync();
+
+      const names = sheets.items.map((w) => w.name);
+      names.sort((a, b) => (b === first ? 1 : 0) - (a === first ? 1 : 0));
+
+      for (const name of names) {
+        const ws = sheets.getItem(name);
+        const used = ws.getUsedRangeOrNullObject(true);
+        used.load(["rowIndex", "columnIndex", "values", "text"]);
+        await ctx.sync();
+        if (used.isNullObject) continue;
+
+        const refs = pfScan(used, want, wantText);
+        if (!refs.length) continue;
+
+        ws.activate();
+        pfPick(ws, refs);
+        await ctx.sync();
+        hit = { sheet: name, refs };
+        break;
+      }
+    });
+
+    if (!hit) {
+      pfSetStatus(v + " is not on any sheet.");
+      pfSend({ t: "found", msg: v + " — not found in this workbook." });
+      return;
+    }
+    const many = hit.refs.length > 1 ? " (" + hit.refs.length + " cells)" : "";
+    pfSetStatus("Found " + v + " at " + hit.sheet + "!" + hit.refs[0] + many + ".");
+    pfSend({ t: "found", msg: v + "  →  " + hit.sheet + "!" + hit.refs[0] + many });
+  } catch (e) {
+    pfSetStatus("Could not look for " + v + ": " + e.message, true);
+    pfSend({ t: "found", msg: "Could not look for " + v + "." });
+  }
+}
+
+/** Put the selection on a list of single-cell refs — all of them where Excel can. */
+function pfPick(ws, refs) {
+  if (supports("1.9") && refs.length > 1) {
+    ws.getRanges(refs.slice(0, PF_AREAS_PER_CALL).join(",")).select();
+    return;
+  }
+  ws.getRange(refs[0]).select();
 }
 
 /** Take the finder's colour off every cell it put it on. */
