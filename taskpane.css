@@ -171,14 +171,6 @@ button.link.add:hover:not(:disabled) { text-decoration: underline; }
 .cr-check .hint { display: block; margin-top: 3px; font-size: 11px; color: var(--muted); font-weight: 400; }
 
 /* ---------- pdf finder ---------- */
-/* The marker the finder is ticking in, shown so the pane and that window agree
-   about which colour is going on the cells. */
-.pf-dot {
-  display: inline-block;
-  width: 11px;
-  height: 11px;
-  border-radius: 50%;
-  border: 1px solid rgba(28, 37, 54, 0.3);
-  vertical-align: -1px;
-  background: #ffe94d;
-}
+/* The whole tab is three fields and a button: which cells the finder should
+   look for. Everything else about the finder lives in its own window. */
+#tab-pdf .hint { font-weight: 400; color: var(--muted); font-size: 11px; }

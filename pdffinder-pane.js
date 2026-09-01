@@ -5,26 +5,34 @@
  *
  * The finder itself is a page (`pdffinder.html`) too big to live in a task
  * pane, so it opens as an Office dialog: a window of its own, beside Excel,
- * talking back down the one wire Office gives it. This file is the other end.
- * It reads the selected cells, sends them over, and colours the sheet as the
- * auditor ticks them off on the page.
+ * showing the statement and nothing else. This file is the other end.
+ *
+ * The pane is deliberately small. It holds one thing the finder cannot know —
+ * **which cells to look for** — as a sheet and, optionally, the columns and
+ * rows to narrow it to. That scope is read when the window opens, sent over,
+ * and the pane then does one job for the rest of the session: colouring the
+ * cells the auditor ticks off on the page.
  *
  * The only property it ever sets on a cell is its fill colour, the same promise
  * the compare tabs make. `pfPainted` is the exact list of cells it filled, so
- * "Clear ticks" takes off those and nothing else.
+ * releasing a tick takes the colour off that cell and nothing else.
  *
- * Loaded after taskpane.js, and it borrows that file's selection parsing
- * (`parseSelection`, `colLetter`, `supports`) rather than repeating it.
+ * Loaded after taskpane.js, and it borrows that file's helpers (`colLetter`,
+ * `colIndex`, `supports`) rather than repeating them.
  */
 
 // What was sent to the finder, in the order it was sent.
-const pfState = { sheet: "", cells: [] };
+const pfState = { sheet: "", scope: "", cells: [] };
 // What is currently coloured on the sheet, so it can be taken off again.
 let pfPainted = { sheet: "", refs: [] };
 let pfHex = "#FFE94D";
 let pfDialog = null;
 
 const PF_TICK_KEY = "vdm-pdffinder:tick";
+
+// A whole column of a large book is more than anyone reconciles against one
+// statement, and every value has to be searched for on every page.
+const PF_MAX_CELLS = 10000;
 
 /**
  * Where the finder window is served from. This is the one line to change.
@@ -63,14 +71,18 @@ function initPdfFinder() {
     const saved = localStorage.getItem(PF_TICK_KEY);
     if (saved) pfHex = JSON.parse(saved);
   } catch { /* first run */ }
-  pfSwatch();
 
-  $("pf-use-selection").onclick = () => pfReadSelection(true);
   $("pf-open").onclick = pfOpen;
-  $("pf-clear").onclick = pfClear;
 }
 
-const pfSwatch = () => { $("pf-dot").style.background = pfHex; };
+/** Fill the sheet picker, keeping whatever was chosen if it is still there. */
+function pfSetSheets(names) {
+  const sel = $("pf-sheet");
+  const keep = sel.value;
+  sel.innerHTML = "";
+  for (const n of names) sel.appendChild(new Option(n, n));
+  sel.value = names.includes(keep) ? keep : (names[0] || "");
+}
 
 function pfSetStatus(msg, isError) {
   const box = $("pf-status");
@@ -78,75 +90,119 @@ function pfSetStatus(msg, isError) {
   box.classList.toggle("err", !!isError);
 }
 
-/* ---------- reading the selection ---------- */
+/* ---------- the scope ---------- */
+
+/** "C", "A,B", "C:E" -> column indexes. Blank means every used column. */
+function pfColumns(raw) {
+  const text = String(raw || "").trim();
+  if (!text) return null;
+  const out = new Set();
+  for (const token of text.split(",").map((t) => t.trim()).filter(Boolean)) {
+    const m = token.match(/^([A-Za-z]{1,3})(?:\s*[:-]\s*([A-Za-z]{1,3}))?$/);
+    if (!m) throw new Error(`“${token}” is not a column like C or C:E.`);
+    const a = colIndex(m[1].toUpperCase());
+    const b = colIndex((m[2] || m[1]).toUpperCase());
+    for (let i = Math.min(a, b); i <= Math.max(a, b); i++) out.add(i);
+  }
+  return [...out].sort((x, y) => x - y);
+}
+
+/** "12:250" -> those rows. Blank means every used row. */
+function pfRows(raw) {
+  const text = String(raw || "").trim();
+  if (!text) return null;
+  const m = text.match(/^(\d+)\s*[:-]\s*(\d+)$/);
+  if (!m) throw new Error(`“${text}” is not a row range like 12:250.`);
+  const first = Math.min(+m[1], +m[2]), last = Math.max(+m[1], +m[2]);
+  if (first < 1) throw new Error("rows start at 1.");
+  return { first, last };
+}
+
+/** How the scope reads in the finder's header: "Bank · A, B · 340 cells". */
+function pfLabel(sheet, cols, rows, n) {
+  const parts = [sheet];
+  parts.push(cols ? cols.map(colLetter).join(", ") : "every column");
+  if (rows) parts.push("rows " + rows.first + "–" + rows.last);
+  parts.push(n + (n === 1 ? " cell" : " cells"));
+  return parts.join(" · ");
+}
 
 /**
- * The cells the user has highlighted, in reading order, blanks dropped.
+ * The cells to look for, read straight off the sheet — no selection needed, and
+ * none disturbed. The constraints in the pane are the whole of the user's say
+ * over what is searched for.
  *
  * Values come off the sheet as `text` — what the auditor sees, which is what is
  * printed on the statement — except for plain numbers, where the underlying
  * value is used instead: a column displayed to the rand still has to find its
  * cents on the page.
  */
-async function pfReadSelection(announce) {
-  const btn = $("pf-use-selection");
-  btn.disabled = true;
+async function pfReadScope(announce) {
   try {
-    let address = "";
-    await Excel.run(async (ctx) => {
-      const sel = supports("1.9") ? ctx.workbook.getSelectedRanges() : ctx.workbook.getSelectedRange();
-      sel.load("address");
-      await ctx.sync();
-      address = sel.address;
-    });
-
-    const { sheet, areas } = parseSelection(address);
-    if (!sheet || !areas.length) throw new Error("select some cells in Excel first.");
+    const sheet = $("pf-sheet").value;
+    if (!sheet) throw new Error("pick a sheet.");
+    const cols = pfColumns($("pf-cols").value);
+    const rows = pfRows($("pf-rows").value);
 
     const cells = [];
+    let capped = false;
     await Excel.run(async (ctx) => {
       const ws = ctx.workbook.worksheets.getItem(sheet);
       const used = ws.getUsedRangeOrNullObject(true);
-      used.load(["rowIndex", "rowCount"]);
+      used.load(["rowIndex", "columnIndex", "rowCount", "columnCount"]);
       await ctx.sync();
+      if (used.isNullObject) throw new Error(`“${sheet}” is empty.`);
 
-      // Clicking a column header selects a million rows; there is no sense
-      // reading past the data.
-      const lastUsed = used.isNullObject ? 0 : used.rowIndex + used.rowCount;
+      // Never read past the data: a column named on its own still stops at the
+      // last used row.
+      const usedFirst = used.rowIndex + 1, usedLast = used.rowIndex + used.rowCount;
+      const first = Math.max(rows ? rows.first : usedFirst, 1);
+      const last = Math.min(rows ? rows.last : usedLast, usedLast);
+      if (last < first) throw new Error("those rows hold no data.");
+
+      const usedCols = [];
+      for (let i = 0; i < used.columnCount; i++) usedCols.push(used.columnIndex + i);
+      const want = (cols || usedCols).filter((c) => usedCols.includes(c));
+      if (!want.length) throw new Error("those columns hold no data.");
+
       const blocks = [];
-      for (const a of areas) {
-        const first = Math.max(a.firstRow === null ? 1 : a.firstRow, 1);
-        const last = Math.min(a.lastRow === null ? lastUsed : a.lastRow, lastUsed);
-        if (last < first) continue;
-        const letter = colLetter(a.column);
+      for (const c of want) {
+        const letter = colLetter(c);
         const range = ws.getRange(`${letter}${first}:${letter}${last}`);
         range.load(["values", "text", "numberFormat"]);
-        blocks.push({ letter, first, range });
+        blocks.push({ letter, range });
       }
-      if (!blocks.length) throw new Error("that selection holds no data.");
       await ctx.sync();
 
       for (const b of blocks) {
         const vals = b.range.values, texts = b.range.text, fmts = b.range.numberFormat;
         for (let i = 0; i < vals.length; i++) {
           const v = pfCellValue(vals[i][0], texts[i][0], fmts[i][0]);
-          if (v !== "") cells.push({ ref: b.letter + (b.first + i), v });
+          if (v === "") continue;
+          if (cells.length >= PF_MAX_CELLS) { capped = true; break; }
+          cells.push({ ref: b.letter + (first + i), v });
         }
+        if (capped) break;
       }
     });
 
-    if (!cells.length) throw new Error("every cell in that selection is blank.");
+    if (!cells.length) throw new Error("every cell in that scope is blank.");
+    // in reading order, so the page and the sheet are walked the same way
+    cells.sort((a, b) => (parseInt(a.ref.replace(/\D/g, ""), 10) - parseInt(b.ref.replace(/\D/g, ""), 10)));
+
     pfState.sheet = sheet;
+    pfState.scope = pfLabel(sheet, cols, rows, cells.length);
     pfState.cells = cells;
-    $("pf-range").textContent = `${sheet} · ${cells.length} cell${cells.length === 1 ? "" : "s"}`;
-    pfSend({ t: "rows", sheet, cells });
-    if (announce) pfSetStatus(`${cells.length} cells ready.`);
+    pfSend({ t: "rows", sheet, scope: pfState.scope, cells });
+    if (announce) {
+      pfSetStatus(capped
+        ? `First ${cells.length} cells sent — narrow the columns or rows for the rest.`
+        : `${pfState.scope}.`);
+    }
     return true;
   } catch (e) {
-    pfSetStatus("Could not read the selection: " + e.message, true);
+    pfSetStatus("Could not read those cells: " + e.message, true);
     return false;
-  } finally {
-    btn.disabled = false;
   }
 }
 
@@ -162,7 +218,7 @@ function pfCellValue(value, text, format) {
 
 /* ---------- the dialog ---------- */
 
-function pfOpen() {
+async function pfOpen() {
   if (!supportsDialog()) {
     pfSetStatus("This version of Excel cannot open the finder window. Excel 2019 or Microsoft 365 is needed.", true);
     return;
@@ -170,6 +226,9 @@ function pfOpen() {
   if (pfDialog) { pfSetStatus("The finder is already open."); return; }
 
   $("pf-open").disabled = true;
+  // The scope is settled before the window opens, so a mistyped column is said
+  // here rather than by an empty page over there.
+  if (!(await pfReadScope(true))) { $("pf-open").disabled = false; return; }
   pfTry(PF_HOME, () => pfTry(PF_FALLBACK, null));
 }
 
@@ -194,7 +253,6 @@ function pfTry(url, next) {
       pfDialog = null;
       pfSetStatus(arg.error === 12006 ? "Finder closed." : "Finder closed (" + arg.error + ").", arg.error !== 12006);
     });
-    if (url === PF_HOME) pfSetStatus("Finder open — pick a PDF in that window.");
   });
 }
 
@@ -215,14 +273,13 @@ const pfRead = PFWire.reader(pfHandle);
 function pfHandle(msg) {
   if (msg.t === "ready") {
     pfSend({ t: "colour", hex: pfHex });
-    if (pfState.cells.length) pfSend({ t: "rows", sheet: pfState.sheet, cells: pfState.cells });
-    else pfReadSelection(false);
+    if (pfState.cells.length) pfSend({ t: "rows", sheet: pfState.sheet, scope: pfState.scope, cells: pfState.cells });
+    else pfReadScope(false);
     return;
   }
-  if (msg.t === "pull") { pfReadSelection(false); return; }
+  if (msg.t === "pull") { pfReadScope(false); return; }
   if (msg.t === "colour") {
     pfHex = msg.hex;
-    pfSwatch();
     try { localStorage.setItem(PF_TICK_KEY, JSON.stringify(pfHex)); } catch { /* quota */ }
     return;
   }
@@ -254,7 +311,6 @@ async function pfPaint(msg) {
     const hex = /^#[0-9a-f]{6}$/i.test(msg.hex || "") ? msg.hex : pfHex;
     const repaint = hex.toLowerCase() !== pfHex.toLowerCase() || pfPainted.sheet !== sheet;
     pfHex = hex;
-    pfSwatch();
 
     const had = pfPainted.sheet === sheet ? new Set(pfPainted.refs) : new Set();
     const fill = [...want].filter((r) => repaint || !had.has(r));
@@ -309,9 +365,9 @@ async function pfGoto(sheet, ref) {
 
 /* ---------- hunting a printed value down on the sheet ---------- */
 
-// A value double-clicked on the page need not be one of the selected cells, so
-// this looks through the whole sheet. Enough matches to point at, not enough to
-// take all afternoon selecting.
+// A value double-clicked on the page need not be one of the cells in scope, so
+// this looks through the whole workbook. Enough matches to point at, not enough
+// to take all afternoon selecting.
 const PF_FIND_MAX = 200;
 
 /** The pane's own copy of the finder's number parser — 1 234,56 / (1.234,56) / 12.34- */
@@ -365,9 +421,9 @@ function pfScan(used, want, wantText) {
 }
 
 /**
- * Find a value printed on the PDF somewhere on the workbook and put the Excel
- * selection on it — the sheet the cells came from first, then the rest, so a
- * figure on the statement that was never highlighted can still be pointed at.
+ * Find a value printed on the PDF somewhere in the workbook and put the Excel
+ * selection on it — the scope's own sheet first, then the rest, so a figure on
+ * the statement that falls outside the chosen columns can still be pointed at.
  *
  * Only the selection moves. Nothing is coloured, so nothing has to be undone.
  */
@@ -428,23 +484,4 @@ function pfPick(ws, refs) {
     return;
   }
   ws.getRange(refs[0]).select();
-}
-
-/** Take the finder's colour off every cell it put it on. */
-async function pfClear() {
-  if (!pfPainted.refs.length) { pfSetStatus("Nothing to clear."); return; }
-  $("pf-clear").disabled = true;
-  try {
-    await Excel.run(async (ctx) => {
-      pfApply(ctx.workbook.worksheets.getItem(pfPainted.sheet), pfPainted.refs, null);
-      await ctx.sync();
-    });
-    pfPainted = { sheet: pfPainted.sheet, refs: [] };
-    pfSend({ t: "cleared" });
-    pfSetStatus("Ticks cleared.");
-  } catch (e) {
-    pfSetStatus("Could not clear: " + e.message, true);
-  } finally {
-    $("pf-clear").disabled = false;
-  }
 }

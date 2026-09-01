@@ -76,52 +76,53 @@ explicit `sheetName` to override. They work independently of the compare pane.
 
 ## PDF finder
 
-Reconcile a column against a **PDF** without reading the statement line by line.
+Reconcile cells of your workbook against a **PDF** without reading the statement
+line by line.
 
-1. Highlight the cells you want to find, on any sheet.
-2. **PDF finder ▸ Use selected cells**, then **Open PDF finder**.
-3. The finder opens in a window of its own beside Excel. Pick a PDF (or drop one
-   on it) and every one of those values is outlined where it is printed.
-4. Tick an occurrence off and **its cell in Excel is filled**, straight away.
+1. Open the add-in and pick the **PDF finder** tab.
+2. Say which cells to look for: a **sheet**, and — if you want to narrow it —
+   the **columns** (`C`, or `A,B`, or `C:E`) and **rows** (`12:250`). Leave
+   either blank for every used column, every used row.
+3. **Open PDF finder**. A window opens beside Excel; pick a PDF, or drop one on
+   it, and every value in that scope is outlined where it is printed.
+4. Click an outline to tick it off — **its cell in Excel is filled**, straight
+   away.
 
-Double-clicking a value on the page works the other way round: whatever is
-printed under the pointer is found on the sheet and the Excel cursor lands on
-it — the source sheet first, then the rest of the workbook, and every matching
-cell at once where there is more than one. It need not be one of the cells you
-picked, so a figure on the statement that is nowhere in your selection can still
-be traced back to the workbook. Only the selection moves; nothing is coloured.
-
-Leave the pane open while you work — it is the pane, not the finder window, that
-colours the cells. **Clear ticks** takes the colour off exactly the cells it put
-it on, and nothing else.
+There is no spreadsheet in that window: your cells are already in Excel, one
+window across. It shows the statement, the count, and the few switches that
+change how matching works.
 
 | Action | Result |
 | --- | --- |
-| Click a row, or `↑` `↓` | Selects it; its free occurrences turn navy and the page scrolls to one |
-| Double-click a row (or `Enter`) | Ticks off **one** occurrence — and fills that cell in Excel |
-| Double-click it again (or `→`) | Steps that row on to the next free occurrence |
-| Click an outline on the page | Ticks it off against the first row waiting for it |
-| Double-click a highlight on the page | Puts the Excel cursor on its cell |
-| Double-click **anything else** on the page | Looks that printed value up in the workbook and selects the cell |
-| Right-click either side (or `Delete`) | Releases that row's tick, and its fill |
-| **Use Excel selection** | Re-reads whatever is selected in Excel now |
+| Click an outline on the page | Ticks it off against the cell it belongs to, and fills that cell |
+| Click a ticked outline | Takes that cell in hand — its other printings turn navy |
+| `→` `←` | Steps the cell in hand on to the next free printing of its value |
+| Double-click **anything** on the page | Puts the Excel cursor on that value's cell, whether or not it is in scope |
+| Right-click an outline (or `Delete`) | Releases that tick, and its fill |
+| **Re-read cells** | Reads the scope off the sheet again, keeping the ticks |
+| **Clear ticks** | Releases every tick, and every fill it put on |
 | The coloured dot | Picks the tick colour — the same colour Excel fills with |
 | **Exact** | Whole values only: `ABC Trading` stops matching `ABC Trading CC` |
-| **Follow** | Selecting a row moves the Excel cursor to its cell |
+| **Follow** | Ticking a value off moves the Excel cursor to its cell |
 
 Each cell claims **one** printed occurrence, so a value that appears three times
-in the column ticks off three separate printings. Column `#` reads `2/4` — this
-cell holds the second of four printed occurrences — or a bare `4` while it is
-untouched. A greyed italic value with a red corner is not in the PDF at all; a
-small circle means it is printed, but every printing is already spoken for. The
-counter at the top reads *cells ticked / cells picked* — that number is the
-reconciliation.
+in the scope ticks off three separate printings and a fourth printing stays
+open. The counter at the top reads *cells ticked / cells in scope* — that number
+is the reconciliation.
+
+Double-clicking works the other way round: whatever is printed under the pointer
+is found on the sheet and the Excel cursor lands on it — the scope's own sheet
+first, then the rest of the workbook, and every matching cell at once where
+there is more than one. It need not be one of the cells in scope, so a figure on
+the statement that falls outside your columns can still be traced back to the
+workbook. Only the selection moves; nothing is coloured.
 
 Amounts are compared as numbers, so the sheet's `1234.56` finds the statement's
 `1 234,56`, `R1,234.56`, `(1 234,56)` and `1234.56-`, and a credit matches its
 opposite debit. Matches never run across a token boundary, so searching `234.56`
 never lights up part of `1 234.56`. Scanned PDFs with no text layer are read with
 OCR automatically — locally, offline, from the copy of Tesseract in `vendor/`.
+Nobody has to ask for it.
 
 **Nothing leaves your machine.** The PDF is opened in the window itself; pdf.js
 and Tesseract are vendored rather than fetched, so no page, amount or client
@@ -211,6 +212,7 @@ Upload custom apps**, using this same manifest. No code changes needed.
 | `index.html` / `guide.html` | Landing page for the GitHub Pages root, and the how-to for coworkers. |
 | `pdffinder.html` / `.css` | The PDF finder window — opened as an Office dialog, not a pane. |
 | `pdffinder/finder.js` | The finder itself: the page, the marks, and which printing belongs to which cell. |
+| `pdffinder/CLAUDE.md` | How the whole PDF finder is meant to work, and the rules it is built on. |
 | `pdffinder/pdfdoc.js` | The only file that touches pdf.js or Tesseract. Word boxes in page points; marks positioned in percentages. |
 | `pdffinder/match.js` | Value normalisation and word-sequence matching. Pure — testable with node. |
 | `pdffinder/claim.js` | Which printed occurrence belongs to which cell. Pure — testable with node. |

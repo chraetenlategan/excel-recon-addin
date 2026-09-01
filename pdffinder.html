@@ -14,73 +14,47 @@
 <header class="chrome">
   <img class="logo" src="assets/logo.jpg" alt="">
   <h1>PDF finder
-    <small>the cells you picked in Excel, found on the page</small>
+    <small id="scope">the cells from Excel, found on the page</small>
   </h1>
+
+  <div class="tally" title="Cells ticked off, out of the cells in scope">
+    <span id="tHit">0</span>/<span id="tAll">0</span>
+  </div>
+
+  <div class="tools">
+    <label class="chk" title="Match whole values only"><input type="checkbox" id="optExact"><span>Exact</span></label>
+    <label class="chk" title="Ticking a value off moves the Excel cursor to its cell"><input type="checkbox" id="optFollow" checked><span>Follow</span></label>
+    <button id="btnTick" class="mini dot" title="Tick colour"></button>
+  </div>
+
   <div class="actions">
     <button id="btnOpen" class="primary">Open PDF</button>
-    <button id="btnPull" title="Read the cells now selected in Excel">Use Excel selection</button>
+    <button id="btnPull" title="Read the cells in scope again">Re-read cells</button>
     <button id="btnClear" title="Release every tick" disabled>Clear ticks</button>
     <input type="file" id="filePdf" accept="application/pdf" hidden>
   </div>
+
+  <div class="picker" id="tickPick" hidden>
+    <button class="sw" data-c="#FFE94D" title="Yellow"></button>
+    <button class="sw" data-c="#A6F06B" title="Green"></button>
+    <button class="sw" data-c="#6FD7FF" title="Blue"></button>
+    <button class="sw" data-c="#FF9ED2" title="Pink"></button>
+    <button class="sw" data-c="#FFB05C" title="Orange"></button>
+    <label class="sw any" title="Any colour"><input type="color" id="tickAny" value="#FFE94D"></label>
+  </div>
 </header>
 
-<div class="app">
-
-  <aside class="side">
-    <div class="side-head">
-      <div class="tally"><span id="tHit">0</span>/<span id="tAll">0</span></div>
-      <div class="tools">
-        <label class="chk" title="Match whole values only"><input type="checkbox" id="optExact"><span>Exact</span></label>
-        <label class="chk" title="Selecting a row selects its cell in Excel"><input type="checkbox" id="optFollow" checked><span>Follow</span></label>
-        <button id="btnTick" class="mini dot" title="Tick colour"></button>
-      </div>
+<main class="viewer" id="viewer"
+      title="Click a value on the page to tick it off &middot; double-click any value to put the Excel cursor on it &middot; right-click to release">
+  <div class="drop" id="drop">
+    <div class="dropInner">
+      <div class="seal"></div>
+      <p>Drop a PDF here</p>
     </div>
-
-    <div class="picker" id="tickPick" hidden>
-      <button class="sw" data-c="#FFE94D" title="Yellow"></button>
-      <button class="sw" data-c="#A6F06B" title="Green"></button>
-      <button class="sw" data-c="#6FD7FF" title="Blue"></button>
-      <button class="sw" data-c="#FF9ED2" title="Pink"></button>
-      <button class="sw" data-c="#FFB05C" title="Orange"></button>
-      <label class="sw any" title="Any colour"><input type="color" id="tickAny" value="#FFE94D"></label>
-    </div>
-
-    <div class="sheet" id="sheetView">
-      <div class="fxbar">
-        <span class="namebox" id="nameBox">&nbsp;</span>
-        <span class="fx">fx</span>
-        <span class="fxval" id="fxVal"></span>
-      </div>
-
-      <div class="colhead" aria-hidden="true">
-        <span class="ch r" id="srcName" title="Where these cells came from">Cell</span>
-        <span class="ch v">Value</span>
-        <span class="ch n" title="Occurrences on the PDF">#</span>
-        <span class="ch k" title="Ticked">&#10003;</span>
-      </div>
-
-      <ul id="cells" class="cells"
-          title="Click a row to outline it on the page &middot; double-click to tick off one occurrence &middot; double-click again for the next one &middot; right-click to release"></ul>
-    </div>
-
-    <p class="empty" id="empty">Select the cells in Excel, then <b>Use Excel selection</b>.</p>
-  </aside>
-
-  <div class="split" id="split" title="Drag to resize"></div>
-
-  <main class="viewer" id="viewer"
-        title="Double-click any value on the page to put the Excel cursor on it">
-    <div class="drop" id="drop">
-      <div class="dropInner">
-        <div class="seal"></div>
-        <p>Drop a PDF here</p>
-      </div>
-    </div>
-    <div class="pages" id="pages"></div>
-    <div class="toast" id="toast" hidden></div>
-  </main>
-
-</div>
+  </div>
+  <div class="pages" id="pages"></div>
+  <div class="toast" id="toast" hidden></div>
+</main>
 
 <div class="bar" id="bar" hidden><i id="barFill"></i></div>
 

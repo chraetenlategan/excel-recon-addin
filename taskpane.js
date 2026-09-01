@@ -97,6 +97,7 @@ async function loadSheetList() {
         state[side].sheet = sel.value;
       }
       crSetSheets(names);
+      pfSetSheets(names);
     });
     for (const side of ["a", "b"]) await loadColumns(side);
     setStatus("");

@@ -77,16 +77,17 @@
 
     <!-- ---------- pdf finder ---------- -->
     <div class="panel hidden" id="tab-pdf">
-      <p class="hint block">Highlight the cells you want to find, click <b>Use selected cells</b>, then open the finder and pick a PDF. Every value is outlined where it is printed; tick one off on the page and its cell is coloured here.</p>
-
-      <button id="pf-use-selection" class="use-sel">Use selected cells</button>
-      <p class="range" id="pf-range">no cells picked</p>
+      <label>Sheet
+        <select id="pf-sheet"></select>
+      </label>
+      <label>Columns <span class="hint">optional &mdash; e.g. C, or A,B, or C:E</span>
+        <input type="text" id="pf-cols" placeholder="every column" />
+      </label>
+      <label>Rows <span class="hint">optional &mdash; e.g. 12:250</span>
+        <input type="text" id="pf-rows" placeholder="every row" />
+      </label>
 
       <button id="pf-open" class="primary">Open PDF finder</button>
-
-      <p class="hint block">The finder opens in a window of its own beside Excel. Leave this pane open &mdash; it is what colours the cells. Marker <span id="pf-dot" class="pf-dot"></span>, changed in the finder window.</p>
-
-      <button id="pf-clear" class="link">Clear ticks</button>
       <p id="pf-status" class="status"></p>
     </div>
 

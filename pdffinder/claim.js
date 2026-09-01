@@ -14,18 +14,6 @@ export function claims(rows){
   return m;
 }
 
-/** Which occurrence (1-based) of its value a row holds, or 0. */
-export function ordinal(row, hits){
-  if(!row || !row.mark) return 0;
-  return hits.findIndex(h => sig(h) === sig(row.mark)) + 1;
-}
-
-/** How many occurrences of this value nobody holds. */
-export function free(rows, hits){
-  const taken = claims(rows);
-  return hits.filter(h => !taken.has(sig(h))).length;
-}
-
 /**
  * Move a row onto the next occurrence nobody else holds, wrapping around.
  * Called again on the same row it steps to the one after — that is how one

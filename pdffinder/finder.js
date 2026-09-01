@@ -1,43 +1,42 @@
-// PDF finder — the Excel-side port of the PDF/Excel reconciliation app.
+// PDF finder — the page half of the add-in's PDF tab.
 //
-// The half of the original that read and rewrote an .xlsx is gone: the workbook
-// is open in Excel next door, so the column arrives over the bridge as live
-// cells and a tick is a fill colour Excel puts on straight away. What is left
-// is the part that matters — the page, the marks, and which printed occurrence
-// belongs to which cell.
+// The workbook is open in Excel next door, so this window shows one thing: the
+// statement. There is no column of cells on it and no list to keep in step —
+// the cells live in the sheet, where the auditor can already see them. What
+// arrives over the bridge is the scope the pane was told to send (a sheet, and
+// the columns the user narrowed it to); every value in it is outlined where it
+// is printed, and ticking one off fills its cell in Excel straight away.
 //
-// One row is one cell of the Excel selection and claims at most one printed
-// occurrence, so three 50s tick off three separate printed 50s.
+// One cell claims at most one printed occurrence, so three 50s in the scope
+// tick off three separate printed 50s and a fourth printing stays open.
 
 import { openPdf, renderPage, ocrPage, needsOcr } from './pdfdoc.js';
 import { findAll, toNumber, toText, valueAt } from './match.js';
 import { load, save, drop } from './store.js';
-import { sig, claims, ordinal, free, claimNext, claimHit } from './claim.js';
+import { sig, claims, claimNext, claimHit } from './claim.js';
 import * as bridge from './bridge.js';
 
 const $ = id => document.getElementById(id);
 const el = {
   open: $('btnOpen'), pull: $('btnPull'), clear: $('btnClear'), file: $('filePdf'),
   tHit: $('tHit'), tAll: $('tAll'), exact: $('optExact'), follow: $('optFollow'),
-  cells: $('cells'), nameBox: $('nameBox'), fxVal: $('fxVal'), srcName: $('srcName'),
-  empty: $('empty'), split: $('split'),
-  tick: $('btnTick'), pick: $('tickPick'), any: $('tickAny'),
+  scope: $('scope'), tick: $('btnTick'), pick: $('tickPick'), any: $('tickAny'),
   viewer: $('viewer'), pages: $('pages'), drop: $('drop'), toast: $('toast'),
   bar: $('bar'), barFill: $('barFill')
 };
 
 const S = {
   doc: null,     // {name,size,pages} of the open PDF, or null
-  key: null,     // localStorage key for this PDF against this selection
+  key: null,     // localStorage key for this PDF against this scope
   pages: [],     // {page,width,height,words,ocr,node,marks}
-  rows: [],      // {v, ref, mark:null|{p,x,y,w,h}, hand}
-  active: -1,
+  rows: [],      // one per cell in scope: {v, ref, mark:null|{p,x,y,w,h}}
+  active: -1,    // the cell whose value is outlined in navy
   sheet: '',     // the worksheet the cells came from
-  peek: null     // a value outlined on the page without being ticked: {v, ref}
+  scope: '',     // how the pane described that scope, for the header
+  peek: null     // a value outlined without being ticked: {v}
 };
 
-/** Ticked off — against the page, or by hand when there is no page to match. */
-const done = r => !!(r && (r.mark || r.hand));
+const done = r => !!(r && r.mark);
 
 /* ---------- occurrences ---------- */
 // Every hit of a value, in reading order. Cached; only a rescan changes it and
@@ -55,14 +54,14 @@ function hitsFor(v){
 }
 const scanned = v => hitCache.has(v);
 
-/** Step a row on to the next occurrence nobody else holds. */
+/** Step a cell on to the next occurrence nobody else holds. */
 const step = (ri, dir) => S.rows[ri] && claimNext(S.rows, ri, hitsFor(S.rows[ri].v), dir);
-/** Give one occurrence to whichever row wants it. @returns the row index, or -1 */
+/** Give one occurrence to whichever cell wants it. @returns the row index, or -1 */
 const give = (v, hit) => claimHit(S.rows, v, hit, S.active);
 
 /* ---------- the marker ---------- */
 // One colour for every tick, the user's own — the same colour Excel fills the
-// cell with, so the two sides read as one document.
+// cell with, so the two windows read as one document.
 const TICK_KEY = 'vdm-pdffinder:tick';
 const DEFAULT_TICK = '#FFE94D';
 
@@ -102,7 +101,7 @@ function progress(p){
 /* ---------- the bridge ---------- */
 
 // Excel is told the whole set of ticked cells rather than each change, so a
-// dropped message can never leave the sheet disagreeing with the column.
+// dropped message can never leave the sheet disagreeing with the page.
 let pushSoon = 0;
 function pushTicks(now){
   clearTimeout(pushSoon);
@@ -117,28 +116,26 @@ function pushTicks(now){
   if(now) fire(); else pushSoon = setTimeout(fire, 140);
 }
 
-/** Put the Excel cursor on a row's own cell. */
+/** Put the Excel cursor on a cell. */
 function follow(ri){
   const r = S.rows[ri];
   if(r && r.ref && el.follow.checked) bridge.send({ t: 'goto', sheet: S.sheet, ref: r.ref });
 }
 
-// The column, straight off the sheet. A tick survives where the same value
-// still sits on the same cell, which is what makes re-sending a selection cheap.
+// The cells in scope, straight off the sheet. A tick survives where the same
+// value still sits on the same cell, which is what makes re-reading cheap.
 bridge.on('rows', msg => {
   const was = new Map(S.rows.map(r => [r.ref, r]));
   S.sheet = msg.sheet || '';
+  S.scope = msg.scope || '';
   S.rows = (msg.cells || []).map(c => {
     const v = String(c.v);
     const old = was.get(c.ref);
-    const same = old && old.v === v;
-    return { v, ref: c.ref, mark: same ? old.mark : null, hand: !!(same && old.hand) };
+    return { v, ref: c.ref, mark: old && old.v === v ? old.mark : null };
   });
   S.active = -1;
   S.peek = null;
-  el.srcName.textContent = S.sheet || 'Cell';
-  el.srcName.title = S.sheet ? 'From ' + S.sheet : 'Where these cells came from';
-  el.empty.hidden = S.rows.length > 0;
+  el.scope.textContent = S.scope || 'the cells from Excel, found on the page';
   el.clear.disabled = !S.rows.length;
   rekey();
   if(!applySaved()) rescan();
@@ -146,13 +143,6 @@ bridge.on('rows', msg => {
 });
 
 bridge.on('colour', msg => setTick(msg.hex, false));
-
-// The pane's own "Clear ticks": the sheet is bare, so the column must be too.
-bridge.on('cleared', () => {
-  S.rows.forEach(r => { r.mark = null; r.hand = false; });
-  redraw();
-  if(S.key) drop(S.key);
-});
 
 /* ---------- document ---------- */
 async function loadFile(file){
@@ -196,18 +186,22 @@ async function loadFile(file){
   autoOcr();
 }
 
-/** This PDF, against this selection — ticks come back when either is reopened. */
+/** This PDF, against this scope — ticks come back when either is reopened. */
 function rekey(){
   S.key = S.doc && S.rows.length
-    ? 'vdm-pdffinder:' + [S.doc.name, S.doc.size, S.doc.pages, S.sheet, S.rows.length, S.rows[0].ref].join('|')
+    ? 'vdm-pdffinder:' + [S.doc.name, S.doc.size, S.doc.pages, S.sheet, S.scope, S.rows.length, S.rows[0].ref].join('|')
     : null;
 }
 
-/** Scanned pages carry no text layer — read them without being asked. */
+/**
+ * Scanned pages carry no text layer, so they are read for the user without
+ * being asked: nobody has to know what OCR is, or press anything to get it.
+ */
 async function autoOcr(){
   const token = S.doc && S.doc.name;
   const todo = S.pages.map((p, i) => i).filter(i => needsOcr(S.pages[i]) && !S.pages[i].ocr);
   if(!todo.length) return;
+  toast(todo.length === S.pages.length ? 'Reading the scan…' : 'Reading ' + todo.length + ' scanned pages…');
   for(let n = 0; n < todo.length; n++){
     if(!S.doc || S.doc.name !== token) return;     // another document was opened
     try{ await ocrPage(S.pages[todo[n]], p => progress((n + p) / todo.length)); }
@@ -218,48 +212,8 @@ async function autoOcr(){
   if(S.doc && S.doc.name === token){ forget(); rescan(); }
 }
 
-/* ---------- the column ---------- */
-function paintCells(){
-  el.cells.innerHTML = '';
-  S.rows.forEach((r, i) => {
-    const known = scanned(r.v);
-    const hits = known ? hitsFor(r.v) : [];
-    const open = known ? free(S.rows, hits) : 0;
-
-    const li = document.createElement('li');
-    li.dataset.i = i;
-    li.className = [
-      i === S.active ? 'active' : '',
-      done(r) ? 'done' : '',
-      known && !hits.length ? 'miss' : '',
-      known && hits.length && !done(r) && !open ? 'short' : ''
-    ].filter(Boolean).join(' ');
-
-    li.innerHTML = '<span class="rn"></span><span class="v"></span>' +
-      '<span class="n"></span><span class="k"></span>';
-    li.querySelector('.rn').textContent = r.ref || (i + 1);
-
-    const v = li.querySelector('.v');
-    v.textContent = r.v;
-    if(toNumber(r.v) !== null) v.classList.add('num');
-
-    // "2/4" — this row holds the second of four printings; a bare "4" while untouched
-    const n = li.querySelector('.n');
-    if(!known) n.textContent = '';
-    else if(r.mark) n.textContent = ordinal(r, hits) + '/' + hits.length;
-    else if(hits.length) n.textContent = String(hits.length);
-    if(known && hits.length) n.title = hits.length + ' on the PDF, ' + open + ' still free';
-
-    li.querySelector('.k').title = done(r) ? 'Release this tick' : 'Tick off one occurrence';
-    el.cells.appendChild(li);
-  });
-
-  const a = S.rows[S.active];
-  el.nameBox.textContent = a ? (a.ref || 'A' + (S.active + 1)) : ' ';
-  el.fxVal.textContent = a ? a.v : '';
-}
-
-/** The reconciliation itself: how much of the column has been ticked off. */
+/* ---------- the count ---------- */
+/** The reconciliation itself: how much of the scope has been ticked off. */
 function tally(){
   el.tAll.textContent = S.rows.length;
   el.tHit.textContent = S.rows.filter(done).length;
@@ -294,12 +248,12 @@ function place(node, m, page){
 }
 
 /**
- * One box per printed occurrence of every value in the column. The class is the
- * only thing that colours it:
- *   open       — printed here, no row has claimed it (hairline)
- *   candidate  — an open occurrence of the row in hand (navy outline)
- *   claimed    — ticked off by some row (marker fill)
- *   held       — ticked off by the row in hand (marker fill, navy ring)
+ * One box per printed occurrence of every value in scope. The class is the only
+ * thing that colours it:
+ *   open       — printed here, no cell has claimed it (hairline)
+ *   candidate  — an open occurrence of the value in hand (navy outline)
+ *   claimed    — ticked off by some cell (marker fill)
+ *   held       — ticked off by the cell in hand (marker fill, navy ring)
  */
 function drawMarks(){
   S.pages.forEach(p => { if(p.marks) p.marks.innerHTML = ''; });
@@ -322,7 +276,7 @@ function drawMarks(){
       node.dataset.v = v;
       node.dataset.hit = n;
       if(held) node.dataset.ri = by;
-      node.title = held ? v + '  —  ' + (S.rows[by].ref || 'row ' + (by + 1)) : v;
+      node.title = held ? v + '  —  ' + (S.rows[by].ref || '') : v;
       place(node, h, page);
       page.marks.appendChild(node);
     });
@@ -332,7 +286,6 @@ function drawMarks(){
 /** The single path that repaints anything. */
 function redraw(){
   drawMarks();
-  paintCells();
   tally();
 }
 
@@ -348,21 +301,68 @@ function scrollTo(t, near){
   el.viewer.scrollTo({ top: y - el.viewer.clientHeight * 0.38, behavior: 'smooth' });
 }
 
-const reveal = (ri, block) => el.cells.children[ri]?.scrollIntoView({ block: block || 'nearest' });
-
-/** Briefly ring the box a row has just taken. */
-function flash(ri){
-  const r = S.rows[ri];
-  if(!r || !r.mark) return;
-  const page = S.pages[r.mark.p];
-  const node = page && page.marks && page.marks.querySelector('.mk.held');
+/** Briefly ring the box a cell has just taken. */
+function flash(){
+  const node = el.pages.querySelector('.mk.held');
   if(node){ node.classList.add('flash'); setTimeout(() => node.classList.remove('flash'), 560); }
+}
+
+/* ---------- ticking ---------- */
+
+/** Tick one printed occurrence off against the cell it belongs to. */
+function take(v, hit){
+  const ri = give(v, hit);
+  if(ri < 0) return;                       // no cell in scope carries this value
+  S.active = ri;
+  S.peek = null;
+  redraw();
+  flash();
+  follow(ri);
+  settle();
+  toast(v + '  →  ' + where(ri));
+}
+
+function release(ri){
+  if(!done(S.rows[ri])) return;
+  S.rows[ri].mark = null;
+  S.active = ri;
+  redraw();
+  settle();
+}
+
+/** How a cell reads in a message: Sheet1!B12. */
+const where = ri => (S.sheet ? S.sheet + '!' : '') + (S.rows[ri] ? S.rows[ri].ref || '' : '');
+
+/** Everything a change of ticks entails: remember it, and colour the sheet. */
+function settle(){
+  persist();
+  pushTicks();
+}
+
+function persist(){
+  if(!S.key) return;
+  save(S.key, { ticks: S.rows.filter(done).map(r => ({ ref: r.ref, v: r.v, mark: r.mark })) });
+}
+
+/** Put a document's saved ticks back on the cells they were made on. */
+function applySaved(){
+  if(!S.key) return false;
+  const saved = load(S.key);
+  if(!saved || !Array.isArray(saved.ticks)) return false;
+  const at = new Map(S.rows.map((r, i) => [r.ref, i]));
+  for(const t of saved.ticks){
+    const ri = at.get(t.ref);
+    if(ri === undefined || S.rows[ri].v !== t.v) continue;
+    S.rows[ri].mark = t.mark || null;
+  }
+  rescan();
+  return true;
 }
 
 /* ---------- looking a printed value up in Excel ---------- */
 
-// A line of feedback over the page: what a double-click on the PDF found, or
-// did not find, on the sheet. It says itself and goes away.
+// A line of feedback over the page: where a value landed on the sheet, or that
+// the workbook does not carry it. It says itself and goes away.
 let toastSoon = 0;
 function toast(text){
   if(!el.toast) return;
@@ -399,21 +399,19 @@ function sameValue(a, b){
 /**
  * Take a value off the page and put the Excel cursor on it.
  *
- * A value the column already carries is one of these rows, so the row is
- * selected and its own cell is the answer. Anything else is not in the
- * selection at all — the pane is asked to hunt it down on the sheet, which is
- * how a figure printed on the statement but never picked out in Excel can
- * still be found there.
+ * A value the scope already carries is one of these cells, so its own cell is
+ * the answer. Anything else was never in scope at all — the pane is asked to
+ * hunt it down in the workbook, which is how a figure printed on the statement
+ * but outside the chosen columns can still be found on the sheet.
  */
 function lookUp(v){
   const ri = S.rows.findIndex(r => sameValue(r.v, v));
-  if(ri > -1){
-    select(ri, { near: true, silent: true });
-    const r = S.rows[ri];
-    if(r.ref){
-      bridge.send({ t: 'goto', sheet: S.sheet, ref: r.ref });
-      toast(v + '  →  ' + (S.sheet ? S.sheet + '!' : '') + r.ref);
-    }
+  if(ri > -1 && S.rows[ri].ref){
+    S.active = ri;
+    S.peek = null;
+    redraw();
+    bridge.send({ t: 'goto', sheet: S.sheet, ref: S.rows[ri].ref });
+    toast(v + '  →  ' + where(ri));
     return;
   }
   // outline every printing of it while Excel is looked through
@@ -422,80 +420,6 @@ function lookUp(v){
   redraw();
   bridge.send({ t: 'find', sheet: S.sheet, v });
   toast('Looking for ' + v + ' in Excel…');
-}
-
-/* ---------- selection ---------- */
-function select(ri, opts){
-  const o = opts || {};
-  S.peek = null;
-  S.active = ri;
-  redraw();
-  reveal(ri, o.block);
-  const r = S.rows[ri];
-  if(!r) return;
-  follow(ri);
-  if(o.silent) return;
-  const taken = claims(S.rows);
-  const target = r.mark || hitsFor(r.v).find(h => !taken.has(sig(h))) || hitsFor(r.v)[0];
-  scrollTo(target, o.near !== false);
-}
-
-/** Tick off one occurrence for this row, or step it on to the next one. */
-function advance(ri){
-  const r = S.rows[ri];
-  if(!r) return;
-  S.peek = null;
-  if(!S.pages.length){                 // no document open — tick the cell by hand
-    r.hand = !r.hand;
-    S.active = ri;
-    redraw();
-    settle();
-    return;
-  }
-  if(!step(ri, 1)){ select(ri); return; }
-  S.active = ri;
-  redraw();
-  reveal(ri);
-  scrollTo(S.rows[ri].mark, true);
-  flash(ri);
-  settle();
-}
-
-function release(ri){
-  if(!done(S.rows[ri])) return;
-  S.rows[ri].mark = null;
-  S.rows[ri].hand = false;
-  S.active = ri;
-  redraw();
-  reveal(ri);
-  settle();
-}
-
-/** Everything a change of ticks entails: remember it, and colour the sheet. */
-function settle(){
-  persist();
-  pushTicks();
-}
-
-function persist(){
-  if(!S.key) return;
-  save(S.key, { ticks: S.rows.filter(done).map(r => ({ ref: r.ref, v: r.v, mark: r.mark, hand: !!r.hand })) });
-}
-
-/** Put a document's saved ticks back on the cells they were made on. */
-function applySaved(){
-  if(!S.key) return false;
-  const saved = load(S.key);
-  if(!saved || !Array.isArray(saved.ticks)) return false;
-  const at = new Map(S.rows.map((r, i) => [r.ref, i]));
-  for(const t of saved.ticks){
-    const ri = at.get(t.ref);
-    if(ri === undefined || S.rows[ri].v !== t.v) continue;
-    S.rows[ri].mark = t.mark || null;
-    S.rows[ri].hand = !!t.hand;
-  }
-  rescan();
-  return true;
 }
 
 /* ---------- events ---------- */
@@ -527,94 +451,37 @@ document.addEventListener('click', e => {
 });
 
 el.clear.addEventListener('click', () => {
-  S.rows.forEach(r => { r.mark = null; r.hand = false; });
+  S.rows.forEach(r => { r.mark = null; });
+  S.active = -1;
   redraw();
   if(S.key) drop(S.key);
   pushTicks(true);
 });
 
-/* the handle between the two windows */
-el.split.addEventListener('pointerdown', e => {
-  e.preventDefault();
-  el.split.setPointerCapture(e.pointerId);
-  el.split.classList.add('dragging');
-  const move = ev => {
-    const w = Math.max(240, Math.min(window.innerWidth - 300, ev.clientX));
-    document.documentElement.style.setProperty('--side', w + 'px');
-  };
-  const up = () => {
-    el.split.classList.remove('dragging');
-    el.split.removeEventListener('pointermove', move);
-    el.split.removeEventListener('pointerup', up);
-  };
-  el.split.addEventListener('pointermove', move);
-  el.split.addEventListener('pointerup', up);
-});
-
-/* the column */
-el.cells.addEventListener('click', e => {
-  const li = e.target.closest('li');
-  if(!li) return;
-  const ri = +li.dataset.i;
-  if(e.target.closest('.k')){
-    if(done(S.rows[ri])) release(ri); else advance(ri);
-    return;
-  }
-  select(ri);
-});
-el.cells.addEventListener('dblclick', e => {
-  const li = e.target.closest('li');
-  if(!li || e.target.closest('.k')) return;
-  e.preventDefault();
-  advance(+li.dataset.i);
-});
-el.cells.addEventListener('contextmenu', e => {
-  const li = e.target.closest('li');
-  if(!li) return;
-  e.preventDefault();
-  release(+li.dataset.i);
-});
-
-/* the page */
+/* the page — the whole of the interface */
 el.pages.addEventListener('click', e => {
   const mk = e.target.closest('.mk');
   if(!mk) return;
-  if(mk.dataset.ri !== undefined){ select(+mk.dataset.ri, { near: true }); return; }
-  const v = mk.dataset.v;
-  const ri = give(v, hitsFor(v)[+mk.dataset.hit]);
-  if(ri < 0) return;
-  S.active = ri;
-  redraw();
-  reveal(ri);
-  flash(ri);
-  follow(ri);
-  settle();
-});
-el.pages.addEventListener('dblclick', e => {
-  const mk = e.target.closest('.mk');
-  if(!mk){
-    // anywhere else on the page: whatever is printed under the pointer, found
-    // on the sheet even when it was never part of the selection
-    const found = valueUnder(e);
-    if(!found) return;
-    e.preventDefault();
-    lookUp(found.t);
+  if(mk.dataset.ri !== undefined){          // already ticked: take that cell in hand
+    S.active = +mk.dataset.ri;
+    S.peek = null;
+    redraw();
+    follow(S.active);
     return;
   }
-  e.preventDefault();
-  // a double-click on a marked value finds it on the sheet
-  const ri = mk.dataset.ri !== undefined
-    ? +mk.dataset.ri
-    : give(mk.dataset.v, hitsFor(mk.dataset.v)[+mk.dataset.hit]);
-  if(ri < 0) return;
-  S.active = ri;
-  redraw();
-  reveal(ri, 'center');
-  // an explicit double-click asks for the cell, whether or not rows follow
-  const r = S.rows[ri];
-  if(r && r.ref) bridge.send({ t: 'goto', sheet: S.sheet, ref: r.ref });
-  settle();
+  take(mk.dataset.v, hitsFor(mk.dataset.v)[+mk.dataset.hit]);
 });
+
+el.pages.addEventListener('dblclick', e => {
+  const mk = e.target.closest('.mk');
+  // whatever is printed under the pointer, found on the sheet — a marked value
+  // by the cell that holds it, anything else by asking the pane to look
+  const v = mk ? mk.dataset.v : (valueUnder(e) || {}).t;
+  if(!v) return;
+  e.preventDefault();
+  lookUp(v);
+});
+
 el.pages.addEventListener('contextmenu', e => {
   const mk = e.target.closest('.mk');
   if(!mk || mk.dataset.ri === undefined) return;
@@ -623,25 +490,17 @@ el.pages.addEventListener('contextmenu', e => {
 });
 
 document.addEventListener('keydown', e => {
-  if(e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
-  const keys = ['ArrowDown', 'ArrowUp', 'ArrowRight', 'ArrowLeft', 'Enter', ' ', 'Escape', 'Delete', 'Backspace'];
-  if(!keys.includes(e.key)) return;
+  if(e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
   if(e.key === 'Escape'){ el.pick.hidden = true; S.active = -1; S.peek = null; redraw(); return; }
-  if(!S.rows.length) return;
-  e.preventDefault();
-
-  if(e.key === 'ArrowDown' || e.key === 'ArrowUp'){
-    select(Math.max(0, Math.min(S.rows.length - 1, S.active + (e.key === 'ArrowDown' ? 1 : -1))));
-    return;
-  }
   if(S.active < 0) return;
-  if(e.key === 'Enter' || e.key === ' '){ advance(S.active); return; }
-  if(e.key === 'Delete' || e.key === 'Backspace'){ release(S.active); return; }
-  // step this row across the other printings of the same value
+  if(e.key === 'Delete' || e.key === 'Backspace'){ e.preventDefault(); release(S.active); return; }
+  // step the cell in hand across the other printings of its value
+  if(e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+  e.preventDefault();
   if(step(S.active, e.key === 'ArrowRight' ? 1 : -1)){
     redraw();
     scrollTo(S.rows[S.active].mark, true);
-    flash(S.active);
+    flash();
     settle();
   }
 });

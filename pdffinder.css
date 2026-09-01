@@ -15,11 +15,7 @@
   --paper:#FFFFFF;
   --focus:#33578A;
 
-  /* the sheet reads as a spreadsheet: cool, even gridlines */
-  --grid:#DCE1E8;
-  --grid-head:#F1F3F6;
   --sel:#33578A;
-  --sel-wash:#EEF3F9;
 
   /* highlights: one meaning per colour, nothing else tints a box */
   --hl-open:rgba(168,133,63,.42);          /* printed, unclaimed        */
@@ -72,29 +68,16 @@ header.chrome h1 small{
 .actions button:disabled{opacity:.42;cursor:default}
 button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
 
-/* ---------- layout ---------- */
-.app{flex:1;display:flex;min-height:0}
-
-/* ---------- side panel ---------- */
-.side{
-  width:var(--side,352px);min-width:240px;max-width:80vw;background:var(--panel);
-  display:flex;flex-direction:column;min-height:0;position:relative;flex:none;
-}
-/* the two windows, and the handle between them */
-.split{
-  flex:none;width:5px;cursor:col-resize;background:var(--line);
-  border-left:1px solid var(--line-soft);border-right:1px solid var(--line-soft);
-}
-.split:hover,.split.dragging{background:var(--gold-light)}
-.side-head{
-  display:flex;align-items:center;gap:10px;padding:10px 12px;
-  border-bottom:1px solid var(--line-soft);background:var(--chrome);flex:none;
-}
+/* ---------- header tools ---------- */
+/* Everything that is not the page lives on one line at the top: the count, the
+   two matching switches, the marker, and the three buttons. There is no side
+   panel — the cells are in Excel, one window across. */
 .tally{
-  font-family:Cambria,Georgia,serif;font-size:15px;color:var(--navy);letter-spacing:.06em;flex:1;
+  font-family:Cambria,Georgia,serif;font-size:16px;color:var(--navy);letter-spacing:.06em;
+  flex:none;padding:0 14px;border-left:1px solid var(--line);border-right:1px solid var(--line);
 }
 .tally #tHit{color:var(--gold-deep);font-weight:700}
-.tools{display:flex;align-items:center;gap:6px}
+.tools{display:flex;align-items:center;gap:10px;flex:none}
 .chk{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--ink-soft);cursor:pointer;user-select:none}
 .chk input{accent-color:var(--gold-deep);margin:0}
 button.mini{
@@ -102,7 +85,6 @@ button.mini{
   border:1px solid var(--line);background:#fff;color:var(--navy);border-radius:3px;cursor:pointer;
 }
 button.mini:hover{background:var(--gold-wash);border-color:var(--gold-light);color:var(--gold-deep)}
-button.mini.wide{width:100%;margin-top:6px;padding:7px}
 /* the current tick colour, and the swatches behind it */
 button.mini.dot{
   width:21px;height:21px;padding:0;border-radius:50%;
@@ -110,7 +92,7 @@ button.mini.dot{
 }
 button.mini.dot:hover{border-color:var(--navy-soft);background:var(--tick)}
 .picker{
-  position:absolute;z-index:9;top:42px;right:10px;display:flex;gap:6px;align-items:center;
+  position:absolute;z-index:9;top:100%;right:22px;display:flex;gap:6px;align-items:center;
   padding:6px 7px;background:#fff;border:1px solid var(--line);border-radius:5px;
   box-shadow:0 4px 14px rgba(28,37,54,.16);
 }
@@ -134,112 +116,6 @@ button.mini.dot:hover{border-color:var(--navy-soft);background:var(--tick)}
   position:absolute;inset:-6px;width:200%;height:200%;padding:0;border:0;
   opacity:0;cursor:pointer;
 }
-
-/* nothing picked yet */
-.empty{
-  margin:0;padding:14px 14px 16px;font-size:12px;line-height:1.6;color:var(--ink-soft);
-  border-top:1px solid var(--line-soft);background:var(--chrome);flex:none;
-}
-.empty[hidden]{display:none}
-.empty b{color:var(--navy)}
-
-/* ---------- the sheet ---------- */
-.sheet{flex:1;display:flex;flex-direction:column;min-height:0}
-/* `display` here would otherwise beat the hidden attribute and leave an empty
-   sheet standing above the workbook */
-.sheet[hidden]{display:none}
-
-/* name box + formula bar, as in the real thing */
-.fxbar{
-  flex:none;display:flex;align-items:stretch;height:26px;
-  background:#fff;border-bottom:1px solid var(--grid);
-}
-.fxbar .namebox{
-  width:54px;flex:none;display:flex;align-items:center;justify-content:center;
-  font-size:11px;font-weight:600;color:var(--navy);background:var(--grid-head);
-  border-right:1px solid var(--grid);font-variant-numeric:tabular-nums;
-}
-.fxbar .fx{
-  width:26px;flex:none;display:flex;align-items:center;justify-content:center;
-  font-family:Cambria,Georgia,serif;font-style:italic;font-size:12px;color:var(--ink-soft);
-  border-right:1px solid var(--grid);
-}
-.fxbar .fxval{
-  flex:1;min-width:0;display:flex;align-items:center;padding:0 8px;font-size:12px;
-  color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-}
-
-/* column letters */
-.colhead,.cells li{display:grid;grid-template-columns:58px 1fr 44px 26px;align-items:stretch}
-.colhead{
-  flex:none;background:var(--grid-head);border-bottom:1px solid var(--grid);
-  font-size:10.5px;font-weight:600;color:var(--ink-soft);
-}
-.colhead>span{
-  padding:3px 6px;border-right:1px solid var(--grid);
-  display:flex;align-items:center;justify-content:center;
-}
-.colhead .r{background:var(--grid-head);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;text-align:center;line-height:1.5}
-.colhead .k{border-right:none}
-
-.cells{list-style:none;margin:0;padding:0;overflow-y:auto;flex:1;min-height:0;background:#fff}
-.cells li{
-  font-size:13px;cursor:cell;user-select:none;background:#fff;
-  border-bottom:1px solid var(--grid);
-}
-.cells li>span{
-  padding:5px 7px;border-right:1px solid var(--grid);
-  display:flex;align-items:center;min-width:0;position:relative;
-}
-/* the row-number gutter */
-.cells li .rn{
-  background:var(--grid-head);color:var(--ink-soft);font-size:10.5px;
-  justify-content:center;font-variant-numeric:tabular-nums;
-}
-.cells li .v{
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;line-height:1.55;
-  font-variant-numeric:tabular-nums;
-}
-.cells li .v.num{text-align:right;font-family:Consolas,"Courier New",monospace;font-size:12.5px}
-.cells li .n{
-  font-size:10.5px;color:var(--ink-soft);font-variant-numeric:tabular-nums;
-  justify-content:flex-end;
-}
-.cells li .k{justify-content:center;border-right:none;padding:0}
-.cells li .k::before{
-  content:"";width:13px;height:13px;border:1px solid var(--grid);border-radius:2px;background:#fff;
-}
-
-.cells li:hover{background:var(--sel-wash)}
-.cells li:hover .k::before{border-color:var(--navy-soft)}
-
-/* the selected cell, drawn the way a spreadsheet draws it */
-.cells li.active .rn{background:var(--sel);color:#fff;font-weight:600}
-.cells li.active .v{box-shadow:inset 0 0 0 2px var(--sel)}
-.cells li.active{background:var(--sel-wash)}
-
-/* ticked off — the sheet carries the same marker colour as the page */
-.cells li.done .v{
-  background:var(--tick);box-shadow:inset 0 0 0 1px var(--tick-edge);
-  text-decoration:line-through;text-decoration-color:var(--tick-edge);
-}
-.cells li.done.active .v{box-shadow:inset 0 0 0 2px var(--sel)}
-.cells li.done .n{color:var(--ink-soft);font-weight:600}
-.cells li.done .k::before{
-  content:"\2713";display:flex;align-items:center;justify-content:center;
-  font-size:11px;line-height:1;color:var(--ink);
-  background:var(--tick);border-color:var(--tick-edge);
-}
-
-/* not printed anywhere — the red corner an auditor already reads as "look here" */
-.cells li.miss .v{color:#9AA2AC;font-style:italic}
-.cells li.miss .v::after{
-  content:"";position:absolute;top:0;right:0;border:4px solid transparent;
-  border-top-color:#B4485C;border-right-color:#B4485C;
-}
-/* printed, but every printing is already held by another row */
-.cells li.short .n{color:#B07A2A}
-.cells li.short .n::after{content:"\00A0\25CB"}
 
 /* ---------- viewer ---------- */
 .viewer{
