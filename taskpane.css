@@ -30,8 +30,6 @@ header { padding: 12px 16px; border-bottom: 1px solid var(--line); }
 header h1 { margin: 0; font-size: 15px; font-weight: 600; color: var(--accent-dark); }
 
 main { flex: 1; padding: 14px 16px; }
-footer { padding: 8px 16px; border-top: 1px solid var(--line); font-size: 11px; }
-footer a { color: var(--muted); }
 
 section { margin-bottom: 14px; }
 
