@@ -151,3 +151,16 @@ button.link.add:hover:not(:disabled) { text-decoration: underline; }
 /* The whole tab is three fields and a button: which cells the finder should
    look for. Everything else about the finder lives in its own window. */
 #tab-pdf .hint { font-weight: 400; color: var(--muted); font-size: 11px; }
+
+/* the colours a sheet already uses, offered as swatches to press */
+.palette { display: flex; flex-wrap: wrap; gap: 4px; margin: 5px 0 0 0; }
+.palette .chip {
+  width: 20px; height: 20px; padding: 0; flex: none; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 3px;
+}
+.palette .chip:hover { border-color: var(--muted); }
+.palette .chip.on {
+  border-color: var(--accent-dark);
+  box-shadow: 0 0 0 1px var(--accent-dark) inset, 0 0 0 1px var(--accent-dark);
+}
+.palette-note { font-size: 11px; color: var(--muted); }

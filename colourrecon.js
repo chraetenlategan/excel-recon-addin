@@ -27,6 +27,11 @@
  * match nor a miss. The "cells side by side belong together" tick turns this
  * off, going back to pooling every cell of a colour.
  *
+ * Each side of a rule lists the colours its sheet actually uses, commonest
+ * first, so the colour is picked by pressing the one you marked with rather
+ * than by mixing the same shade again in a colour dialog. The colour box and
+ * the ⊙ button are still there for anything the list doesn't cover.
+ *
  * Matching itself uses the pane's own matchValues()/matchRows(), with whatever
  * rules are ticked below (ignore sign, ignore cents, tolerance, and the rest).
  *
@@ -40,6 +45,12 @@
 const CR_CELLS_PER_CALL = 2000;
 
 const CR_DEFAULTS = ["#7030A0", "#00B0F0", "#FFC000", "#92D050"];
+
+// The colours a sheet actually uses, so the user picks from what is in front of
+// them instead of matching a shade in a colour dialog: sheet name -> either the
+// string "scanning" while the sheet is being read, or [{ hex, count }] once it
+// has been. Cleared whenever the sheet list is refreshed.
+const crPalettes = new Map();
 
 // One line of the pane: this colour on this sheet against that colour on that
 // sheet. `join` is shared by all of them — the word shown between the lines.
@@ -64,8 +75,8 @@ function newRule(i) {
   const colour = CR_DEFAULTS[i % CR_DEFAULTS.length];
   const above = crRules[i - 1];
   return {
-    a: { sheet: above ? above.a.sheet : (crSheetNames[0] || ""), colour },
-    b: { sheet: above ? above.b.sheet : (crSheetNames[1] || crSheetNames[0] || ""), colour },
+    a: { sheet: above ? above.a.sheet : (crSheetNames[0] || ""), colour, auto: true },
+    b: { sheet: above ? above.b.sheet : (crSheetNames[1] || crSheetNames[0] || ""), colour, auto: true },
   };
 }
 
@@ -78,6 +89,7 @@ const crHex = (c) => String(c || "").replace("#", "").toUpperCase();
 // shape of a recon; anything the user has already chosen is kept.
 function crSetSheets(names) {
   crSheetNames = names.slice();
+  crPalettes.clear();
   for (const rule of crRules) {
     if (!names.includes(rule.a.sheet)) rule.a.sheet = names[0] || "";
     if (!names.includes(rule.b.sheet)) rule.b.sheet = names[1] || names[0] || "";
@@ -86,6 +98,7 @@ function crSetSheets(names) {
 }
 
 function crDrawRules() {
+  for (const sheet of crPalettes.keys()) crAdopt(sheet);
   const box = $("cr-rules");
   box.innerHTML = "";
   crRules.forEach((rule, i) => {
@@ -155,13 +168,14 @@ function crRuleSide(rule, side) {
   const sheet = document.createElement("select");
   for (const n of crSheetNames) sheet.appendChild(new Option(n, n));
   sheet.value = rule[side].sheet;
-  sheet.onchange = () => { rule[side].sheet = sheet.value; };
+  sheet.onchange = () => { rule[side].sheet = sheet.value; crDrawRules(); };
 
   const swatch = document.createElement("input");
   swatch.type = "color";
   swatch.value = rule[side].colour;
   swatch.title = "The colour to look for";
-  swatch.oninput = () => { rule[side].colour = swatch.value; };
+  swatch.oninput = () => { rule[side].colour = swatch.value; rule[side].auto = false; };
+  swatch.onchange = () => crDrawRules();           // once the dialog closes, re-mark the chips
 
   const pick = document.createElement("button");
   pick.type = "button";
@@ -171,7 +185,110 @@ function crRuleSide(rule, side) {
   pick.onclick = () => crPickColour(rule, side, sheet, swatch, pick);
 
   row.append(sheet, swatch, pick);
-  return row;
+
+  const wrap = document.createElement("div");
+  wrap.append(row, crPalette(rule, side));
+  return wrap;
+}
+
+/* ---------- the colours this sheet already uses ---------- */
+
+/**
+ * The colours found on the side's sheet, as swatches to press. This is the
+ * quick way in: the user has already coloured the cells, so the colours are
+ * there to be read off the sheet rather than mixed again by hand.
+ */
+function crPalette(rule, side) {
+  const box = document.createElement("div");
+  box.className = "palette";
+
+  const sheet = rule[side].sheet;
+  if (!sheet) return box;
+
+  const found = crPalettes.get(sheet);
+  if (found === undefined) {
+    crScanSheet(sheet);
+    box.append(crPaletteNote("Reading the colours on " + sheet + "…"));
+    return box;
+  }
+  if (found === "scanning") {
+    box.append(crPaletteNote("Reading the colours on " + sheet + "…"));
+    return box;
+  }
+  if (!found.length) {
+    box.append(crPaletteNote("No filled cells on " + sheet + " — colour some, then press ↻."));
+    return box;
+  }
+
+  const chosen = crHex(rule[side].colour);
+  for (const c of found) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "chip" + (c.hex === chosen ? " on" : "");
+    b.style.background = "#" + c.hex;
+    b.title = `#${c.hex} — ${c.count} cell${c.count === 1 ? "" : "s"}`;
+    b.setAttribute("aria-label", b.title);
+    b.onclick = () => { rule[side].colour = "#" + c.hex; rule[side].auto = false; crDrawRules(); };
+    box.appendChild(b);
+  }
+  return box;
+}
+
+function crPaletteNote(text) {
+  const p = document.createElement("span");
+  p.className = "palette-note";
+  p.textContent = text;
+  return p;
+}
+
+/**
+ * Tally every fill on one sheet, commonest first. Blank cells don't count —
+ * they are never matched or coloured — and neither do the green and red the
+ * add-in itself paints, which would otherwise crowd out the colours the user
+ * marked with on a second pass.
+ */
+async function crScanSheet(name) {
+  crPalettes.set(name, "scanning");
+  try {
+    await Excel.run(async (ctx) => {
+      const ws = ctx.workbook.worksheets.getItem(name);
+      const used = ws.getUsedRangeOrNullObject(true);
+      used.load(["rowIndex", "columnIndex", "rowCount", "columnCount"]);
+      await ctx.sync();
+
+      const counts = new Map();
+      if (!used.isNullObject) {
+        const top = used.rowIndex, left = used.columnIndex;
+        const rows = used.rowCount, cols = used.columnCount;
+        const block = Math.max(1, Math.floor(CR_CELLS_PER_CALL / cols));
+
+        for (let start = 0; start < rows; start += block) {
+          const height = Math.min(block, rows - start);
+          const range = ws.getRangeByIndexes(top + start, left, height, cols);
+          range.load("values");
+          const props = range.getCellProperties({ format: { fill: { color: true } } });
+          await ctx.sync();
+
+          for (let r = 0; r < height; r++) {
+            for (let c = 0; c < cols; c++) {
+              const hex = crHex(props.value[r][c].format.fill.color);
+              if (!hex || hex === "FFFFFF" || hex === GREEN || hex === RED) continue;
+              const value = range.values[r][c];
+              if (_text(value) === "" && _amount(value) === null) continue;
+              counts.set(hex, (counts.get(hex) || 0) + 1);
+            }
+          }
+        }
+      }
+      crPalettes.set(name, [...counts.entries()]
+        .map(([hex, count]) => ({ hex, count }))
+        .sort((x, y) => y.count - x.count || (x.hex < y.hex ? -1 : 1)));
+    });
+  } catch (e) {
+    crPalettes.set(name, []);
+    setStatus(`Could not read the colours on ${name}: ${e.message}`, true);
+  }
+  crDrawRules();
 }
 
 /* ---------- "use the selected cell" ---------- */
@@ -195,7 +312,11 @@ async function crPickColour(rule, side, sheetSel, swatch, btn) {
     if (sheet && !crSheetNames.includes(sheet)) await loadSheetList();
 
     rule[side].colour = "#" + crHex(colour);
-    if (sheet) rule[side].sheet = sheet;
+    rule[side].auto = false;
+    if (sheet) {
+      rule[side].sheet = sheet;
+      crPalettes.delete(sheet);                    // it may have been coloured since the last read
+    }
     // Redraw rather than poke the two controls: the sheet list may have grown.
     crDrawRules();
     setStatus(`${sheet} · #${crHex(colour)}`);
@@ -204,6 +325,23 @@ async function crPickColour(rule, side, sheetSel, swatch, btn) {
   } finally {
     btn.disabled = false;
   }
+}
+
+/**
+ * A rule side the user hasn't touched adopts a colour the sheet really uses —
+ * rule 1 the commonest, rule 2 the next — so once a sheet has been read a run
+ * is often one press away.
+ */
+function crAdopt(sheet) {
+  const found = crPalettes.get(sheet);
+  if (!Array.isArray(found) || !found.length) return;
+  crRules.forEach((rule, i) => {
+    for (const side of ["a", "b"]) {
+      if (rule[side].auto && rule[side].sheet === sheet) {
+        rule[side].colour = "#" + found[i % found.length].hex;
+      }
+    }
+  });
 }
 
 /* ---------- finding the coloured cells ---------- */
