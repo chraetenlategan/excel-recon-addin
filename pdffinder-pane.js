@@ -61,19 +61,13 @@ const pfIsOwnMove = () => Date.now() - pfSelfMove < PF_SELF_MOVE_MS;
 
 const PF_TICK_KEY = "vdm-pdffinder:tick";
 
-// Every step this file takes on the bridge is written down. `pdffinder/debug.js`
-// is loaded before it, so the recorder is already listening; the guard is only
-// there so the pane still runs if that file is ever dropped.
+// Every step this file takes on the bridge is written down, into the recorder in
+// `pdffinder/debug.js`, which is loaded before it. Nothing on screen shows the
+// log; it is there for the console when the bridge misbehaves.
 const PF_BUILD = "2026-09-01c";
 const pfSay = (tag, d) => { if (window.PFDebug) window.PFDebug.log(tag, d); };
 const pfCodes = (s, n) => (window.PFDebug ? window.PFDebug.codes(s, n) : String(s).slice(0, n));
 if (window.PFDebug) window.PFDebug.file("pane", PF_BUILD);
-
-// The uncoded probe, and the sample it carries. Both ends know the same string,
-// so either can say whether what arrived is what left.
-const PF_RAW_PROBE = "PFRAW|";
-const PF_RAW_BACK = "PFRAWBACK|";
-const PF_RAW_SAMPLE = "a\tb c\u00a0d—é|end";
 
 // A whole column of a large book is more than anyone reconciles against one
 // statement, and every value has to be searched for on every page.
@@ -143,7 +137,6 @@ function initPdfFinder() {
   }
 
   $("pf-open").onclick = pfOpen;
-  initPfDebug();
 }
 
 /**
@@ -467,26 +460,7 @@ function pfRead(raw) {
   pfIn++;
   if (typeof raw !== "string") { pfSay("in.raw", "not a string: " + typeof raw); return; }
   pfSay("in.raw", raw.length + "ch — head: " + pfCodes(raw, 44));
-  // The echo of a raw probe never goes near the codec — that is the point of it.
-  if (raw.slice(0, PF_RAW_BACK.length) === PF_RAW_BACK) { pfRawBack(raw); return; }
   pfReader(raw);
-}
-
-/**
- * What the window says it received, and what came back of it. Between the two
- * lines this writes, the exact characters at every stage of a round trip are on
- * the record: what the pane sent, what the window saw, what returned.
- */
-function pfRawBack(raw) {
-  const parts = raw.slice(PF_RAW_BACK.length).split("|");
-  const verdict = parts[0];
-  const returned = raw.slice(raw.indexOf("|", raw.indexOf("|", PF_RAW_BACK.length) + 1) + 1);
-  pfSay("probe.back", "the window saw it " + verdict.toUpperCase() +
-    " as " + parts[1] + " — and it came home " +
-    (returned === PF_RAW_SAMPLE ? "INTACT" : "MANGLED: " + pfCodes(returned, 60)));
-  pfSetStatus(verdict === "intact" && returned === PF_RAW_SAMPLE
-    ? "Raw echo: the channel carries a string unharmed, both ways."
-    : "Raw echo: the channel ALTERS the string — that is the fault. See the report.", verdict !== "intact");
 }
 
 /** Everything a freshly opened finder needs: the marker, and the cells. */
@@ -500,9 +474,6 @@ function pfGreet() {
 
 function pfHandle(msg) {
   pfSay("in." + (msg && msg.t), msg && msg.t === "ticks" ? (msg.hit + "/" + msg.all) : "");
-  if (msg.t === "pong") { pfPong(msg); return; }
-  if (msg.t === "log") { pfTakeLog(msg); return; }
-  if (msg.t === "ping") { pfSend({ t: "pong", n: msg.n, sentAt: msg.at, at: Date.now(), via: "pane" }); return; }
   if (msg.t === "ready") { pfCheckBuild(msg); pfGreet(); return; }
   if (msg.t === "pull") { pfReadScope(false); return; }
   if (msg.t === "colour") {
@@ -726,94 +697,6 @@ function pfPick(ws, refs) {
 }
 
 
-/* ---------- the bridge test, and the report ---------- */
-
-/**
- * When the finder goes quiet there is nothing on either screen to say which
- * direction went quiet, so this section makes the bridge testable on its own,
- * with no PDF and no cells involved.
- *
- * **Test bridge** sends the same `ping` three times, once down each form of
- * `messageChild` Office offers, each one labelled. `bridge.js` answers every
- * ping it receives three times over, once down each form of `messageParent`,
- * labelled the same way. Four seconds later the pane knows:
- *
- *  - nothing came back and the window's own log shows no ping — **the pane
- *    cannot reach the window**;
- *  - the window's log shows the ping but nothing came back — **the window
- *    cannot reach the pane**, which is the failure that leaves a double-click
- *    saying "Looking for … in Excel" for ever;
- *  - some labels came back and others did not — the channel works, but only in
- *    one of its forms, and `pfPost`/`rawPost` should prefer that one.
- *
- * The window's own log is fetched over the same bridge (`report` / `log`), so
- * it is only in the pane's report when the return leg works at all. When it
- * does not, the window prints its own — that is what its **Debug** drawer is
- * for, and why neither end ever depends on the other to be able to speak.
- */
-let pfPingN = 0;
-const pfPings = new Map();
-let pfFinderReport = "";
-
-function pfPing() {
-  if (!pfDialog) {
-    pfSetStatus("Open the finder first — there is nothing to test the bridge against.", true);
-    return;
-  }
-  const n = ++pfPingN;
-  const test = { at: Date.now(), back: [] };
-  pfPings.set(n, test);
-
-  // The raw probe goes first and answers for itself: if the channel cannot
-  // carry a tab, no codec built on tabs will ever work, and the pings behind it
-  // will fail for that reason and no other.
-  pfSay("probe.out", pfCodes(PF_RAW_SAMPLE, 60));
-  pfPost(PF_RAW_PROBE + PF_RAW_SAMPLE, "targetOrigin");
-
-  pfSay("test.ping", "#" + n + " down all three forms");
-  const sent = [];
-  for (const via of ["targetOrigin", "bare", "star"]) {
-    let ok = true;
-    for (const chunk of PFWire.encode({ t: "ping", n, via, at: test.at })) ok = pfPost(chunk, via) && ok;
-    if (ok) sent.push(via);
-  }
-  pfSetStatus("Bridge test sent (" + (sent.join(", ") || "nothing — every form threw") + "). Waiting 4s…");
-  setTimeout(() => {
-    pfPings.delete(n);
-    const verdict = test.back.length
-      ? "Bridge test: the window answered in " + test.ms + " ms (" + test.back.join(", ") + ")."
-      : "Bridge test: no answer in 4s. The window→pane direction is not working — open the finder's Debug drawer and copy its report.";
-    pfSay("test.verdict", verdict);
-    pfSetStatus(verdict, !test.back.length);
-    // The window's own log, if it can still be asked for it.
-    pfSend({ t: "report" });
-  }, 4000);
-}
-
-function pfPong(msg) {
-  const test = pfPings.get(msg.n);
-  const ms = Date.now() - (msg.sentAt || Date.now());
-  pfSay("test.pong", "#" + msg.n + " via " + msg.via + " in " + ms + " ms");
-  if (!test) return;
-  if (!test.back.includes(msg.via)) test.back.push(msg.via);
-  test.ms = ms;
-}
-
-/** The finder's own log, sent over the bridge, kept for the pane's report. */
-function pfTakeLog(msg) {
-  pfFinderReport = String(msg.text || "");
-  pfSay("test.finderLog", pfFinderReport.length + " characters received from the window");
-  pfDebugPaint();
-}
-
-/** Both logs, one below the other — the whole picture where the bridge allows it. */
-function pfReport() {
-  const mine = window.PFDebug ? window.PFDebug.report() : "(the recorder did not load)";
-  return pfFinderReport
-    ? mine + "\n\n\n" + pfFinderReport
-    : mine + "\n\n(no report from the finder window — either it was never opened, or it cannot reach the pane. Copy its own Debug drawer instead.)";
-}
-
 /**
  * The window is served from the same place as the pane, so the two are the same
  * version in the repository and can still be different versions in memory: a
@@ -829,78 +712,4 @@ function pfCheckBuild(msg) {
   pfSay("build.MISMATCH", "the two ends are running different builds");
   pfSetStatus("The finder window is running a different build (" + theirs + ") to the pane (" + mine +
     "). Close it, clear the Office web cache and reopen — you are testing two versions at once.", true);
-}
-
-/* ---------- the drawer ---------- */
-
-let pfDebugSoon = 0;
-
-function pfDebugPaint() {
-  const box = $("pf-dbg-log");
-  if (!box || box.closest("details") && !box.closest("details").open) return;
-  box.value = pfReport();
-  box.scrollTop = box.scrollHeight;
-}
-
-function initPfDebug() {
-  if (!window.PFDebug) return;
-  window.PFDebug.side = "task pane";
-  window.PFDebug.env(() => {
-    const req = (n, v) => { try { return Office.context.requirements.isSetSupported(n, v); } catch { return "?"; } };
-    return {
-      "pane build": PF_BUILD + " (wire " + (window.PFWire && window.PFWire.BUILD || "?") + ")",
-      "pane url": window.location.href,
-      "pane origin": window.location.origin,
-      "finder home": PF_HOME,
-      "finder fallback": PF_FALLBACK,
-      "dialog origin": pfOrigin,
-      "dialog open": !!pfDialog,
-      "greeted": pfGreeted,
-      "Office host": String(Office.context.host) + " / " + String(Office.context.platform),
-      "DialogApi 1.1 / 1.2": req("DialogApi", "1.1") + " / " + req("DialogApi", "1.2"),
-      "ExcelApi 1.9": req("ExcelApi", "1.9"),
-      "scope": pfState.scope || "(none read yet)",
-      "cells in scope": pfState.cells.length,
-      "cells painted": pfPainted.refs.length + " on " + (pfPainted.sheet || "-"),
-      "follow the cursor": pfFollowSel + (pfWatching ? " (watching)" : " (not watching)"),
-      "last cell followed": pfLastSel || "-",
-      "chunks out / in": pfOut + " / " + pfIn
-    };
-  });
-
-  const drawer = $("pf-dbg");
-  const box = $("pf-dbg-log");
-  if (drawer) drawer.addEventListener("toggle", () => { if (drawer.open) pfDebugPaint(); });
-  window.PFDebug.onLine(() => {
-    clearTimeout(pfDebugSoon);
-    pfDebugSoon = setTimeout(pfDebugPaint, 200);
-  });
-
-  const on = (id, fn) => { const b = $(id); if (b) b.onclick = fn; };
-  on("pf-dbg-test", pfPing);
-  on("pf-dbg-raw", () => {
-    if (!pfDialog) { pfSetStatus("Open the finder first.", true); return; }
-    pfSay("probe.out", pfCodes(PF_RAW_SAMPLE, 60));
-    pfPost(PF_RAW_PROBE + PF_RAW_SAMPLE, "targetOrigin");
-    pfSetStatus("Raw echo sent — no codec involved. Watch the report.");
-  });
-  on("pf-dbg-pull", () => { pfSend({ t: "report" }); pfSetStatus("Asked the window for its log."); });
-  on("pf-dbg-copy", () => {
-    const text = pfReport();
-    pfDebugPaint();
-    if (box) { box.focus(); box.select(); }
-    const done = (ok) => pfSetStatus(ok
-      ? "Report copied — paste it into a message."
-      : "Could not copy automatically; the report is selected in the box, press Ctrl+C.", !ok);
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(() => done(true), () => done(pfCopyFallback()));
-      return;
-    }
-    done(pfCopyFallback());
-  });
-  on("pf-dbg-clear", () => { window.PFDebug.clear(); pfFinderReport = ""; pfDebugPaint(); });
-}
-
-function pfCopyFallback() {
-  try { return document.execCommand("copy"); } catch { return false; }
 }

@@ -1,50 +1,36 @@
 # Compare — Excel add-in
 
-A Microsoft Excel **task-pane add-in** that compares **any column on any sheet
-against any column on any other sheet**, right inside the workbook, and colours
-the result on your own cells — and, on its **PDF finder** tab, matches those
-same cells against a PDF.
+A Microsoft Excel **task-pane add-in** with two tools. **ColourCode** reconciles
+the cells you colour in on one sheet against the cells you colour in on another,
+right inside the workbook, and colours the result on your own cells. The
+**PDF finder** matches those same cells against a PDF.
 
-No fixed layout, no headers to get right, no cashbook/bank/ledger roles — pick
-two columns and it matches them.
+No fixed layout, no headers to get right, no cashbook/bank/ledger roles — colour
+the cells and it matches them.
 
 Everything runs locally in Excel. **No data leaves your machine** — the hosting
 (GitHub Pages) only serves the add-in's code, never your numbers.
 
 ---
 
-## Using it
+## Using it — ColourCode
 
 1. **Home ▸ Reconcile** to open the pane.
-2. **Fastest way — select the cells.** Highlight the cells you want on the
-   sheet, click **Use selected cells** under Side A, then highlight the second
-   lot of cells (any sheet) and click **Use selected cells** under Side B. Each
-   button fills in that side's sheet, column(s) and row range from the
-   selection — ctrl-click several blocks and they all come across, and a whole
-   selected column is trimmed to the used rows. Everything it fills in can
-   still be edited by hand afterwards. Or set it up manually:
-3. **Side A**: pick the sheet and the column (e.g. `Sheet1`, column `E`).
-   **Side B**: pick the other sheet and column (e.g. `Sheet3`, column `F`).
-   Either side can take **more than one column** — ctrl-click them. The columns
-   of a side are pooled, so a value on A counts as found if it turns up in
-   *any* of side B's columns (e.g. `E` on one sheet against `F` **or** `H` on
-   the other).
-4. Optionally **limit the rows** on either side. The box takes
-   `B12:B25` (column *and* rows — the column overrides the picker),
-   `12:25` (rows only, applied to every picked column), or `B` / `B:B` (whole
-   column). Separate several pieces with commas — `F12:F25, H12:H25`.
-   Leave it blank to use the whole used column. The line under each side always
-   shows the exact range that will be read.
-5. Options:
+2. **Colour the cells** you want checked, in Excel, with any fill colour.
+3. In the pane, add **one rule per colour**: the sheet and colour on the left,
+   the sheet and colour on the right. Several rules read as *OR* — each is
+   reconciled on its own — or as *AND*, where the rules must come true together
+   on the same row.
+4. Options:
    - **Ignore + / −** — `-100` matches `100` (on by default).
    - **Ignore case & spacing** — for text values.
-6. Click **Compare**. Every non-blank cell in both ranges is filled:
+5. Click **Recon colours**. Every non-blank cell in the rules is filled:
    - 🟩 found on the other side,
    - 🟥 not found.
 
    Blank cells are left alone. Values are matched **one-for-one** across the
    whole of each side: three `100`s on A against two on B leave the third one
-   red, whichever of B's columns they sit in.
+   red.
 
 Numbers compare as numbers (rounded to cents, `(50)`, `50-`, `R1 234,56` and
 `50 DR` all understood); anything else compares as text.
@@ -52,8 +38,8 @@ Numbers compare as numbers (rounded to cents, `(50)`, `50-`, `R1 234,56` and
 **Nothing else in your workbook is touched.** The add-in only ever sets a cell's
 **fill colour** — no values are written, nothing is merged or unmerged, and
 fonts, borders, number formats and column widths are left exactly as they were.
-**Clear colours** removes the fill from the last two ranges it painted, and
-nothing else.
+**Clear colours** removes the fill from the ranges it last painted, and nothing
+else.
 
 ### In-cell formulas
 
@@ -140,7 +126,7 @@ on every change rather than each tick, so a dropped message can never leave the
 sheet disagreeing with the column.
 
 This needs the **DialogApi 1.2** requirement set — Excel 2019 or Microsoft 365.
-The pane says so plainly on older builds; the other two tabs still work there.
+The pane says so plainly on older builds; ColourCode still works there.
 
 ### Where the finder is served from
 
@@ -207,7 +193,8 @@ Upload custom apps**, using this same manifest. No code changes needed.
 |---|---|
 | `manifest.xml` | What you sideload. Points Excel at the hosted `taskpane.html`. |
 | `taskpane.html` / `.css` | The pane UI (loads Office.js from Microsoft's CDN). |
-| `taskpane.js` | **The Excel-aware pane code** — reads sheets, calls the engine, writes results. Owns `writeSpecs`, the Office.js sheet writer. |
+| `taskpane.js` | The shared pane machinery — the matching rules, the pairing, and the painter. |
+| `colourrecon.js` | **ColourCode**: the colour rules, and reading the coloured cells off a sheet. |
 | `functions.js` / `functions.json` | The `=RECON.COMPARETO…` custom functions + their metadata. |
 | `engine.js` | The reconciliation engine, ported verbatim from the web app. |
 | `comparison.js` / `sheets.js` | Build the comparison / unmatched output sheet specs. |

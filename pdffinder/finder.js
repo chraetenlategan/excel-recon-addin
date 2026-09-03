@@ -441,7 +441,7 @@ function expectAnswer(what){
   clearTimeout(waiting);
   waiting = setTimeout(() => {
     if(window.PFDebug) window.PFDebug.log('bridge.silent', what + ' — Excel did not answer in 6s');
-    toast('Excel has not answered — press Debug to see why.');
+    toast('Excel has not answered — close the finder and open it again.');
   }, 6000);
 }
 

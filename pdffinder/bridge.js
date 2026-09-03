@@ -10,9 +10,7 @@
 // stays empty until one is sent.
 //
 // Every step of the handshake is written to `PFDebug`, because when this file
-// goes quiet there is nothing on either screen to say so. `ping` is answered
-// here rather than in the finder, and answered three different ways, so a
-// bridge that is half working says exactly which half.
+// goes quiet there is nothing on either screen to say so.
 
 const handlers = new Map();
 let post = null;                       // set once Office is up
@@ -25,18 +23,6 @@ const BUILD = "2026-09-01c";
 const say = (tag, d) => { if (window.PFDebug) window.PFDebug.log(tag, d); };
 const codes = (s, n) => (window.PFDebug ? window.PFDebug.codes(s, n) : String(s).slice(0, n));
 if (window.PFDebug) window.PFDebug.file("bridge", BUILD);
-
-/**
- * A string sent home with no codec around it at all — no chunk header, no JSON,
- * nothing that could be blamed on this end's own encoding. What comes back from
- * a round trip of one of these is what the Office channel really does to a
- * string, and that is the one fact the whole bridge rests on.
- */
-const RAW_PROBE = "PFRAW|";
-const RAW_BACK = "PFRAWBACK|";
-// tab, then a space, a non-breaking space, an em dash and an accent — the
-// characters most likely to be eaten, and the tab is the one that matters.
-const RAW_SAMPLE = "a\tb c\u00a0d—é|end";
 
 /** Register a handler for one message type from the pane. */
 export function on(type, fn) {
@@ -58,38 +44,14 @@ export function send(msg) {
  * and it is exported so the finder can be driven — and looked at — in an
  * ordinary browser tab with no Excel behind it.
  */
-/** Answer a raw probe with what actually arrived, uncoded, so nothing can hide it. */
-function rawEcho(text) {
-  const body = text.slice(RAW_PROBE.length);
-  const intact = body === RAW_SAMPLE;
-  say("probe.in", (intact ? "INTACT" : "MANGLED") + " " + body.length + "ch: " + codes(body, 60));
-  const reply = RAW_BACK + (intact ? "intact" : "mangled") + "|" + codes(body, 60) + "|" + body;
-  for (const via of ["targetOrigin", "bare", "star"]) rawPost(reply, via);
-}
-
 export function receive(msg) {
   inbound++;
   const t = msg && msg.t;
-  if (t === "ping") { pong(msg); return; }
   const fn = handlers.get(t);
   say("in." + t, fn ? "handled" : "NO HANDLER for this type");
   if (fn) {
     try { fn(msg); }
     catch (e) { say("in.threw", t + " — " + (e && e.stack || e)); }
-  }
-}
-
-/**
- * Answer the pane's bridge test — down all three forms of `messageParent` at
- * once, each labelled. Whichever labels come out the other end are the forms
- * this host actually delivers; if none do, the return leg is dead and the
- * finder's own log will still show the ping arriving.
- */
-function pong(msg) {
-  say("in.ping", "#" + (msg && msg.n));
-  const body = { t: "pong", n: msg && msg.n, sentAt: msg && msg.at, at: Date.now() };
-  for (const via of ["targetOrigin", "bare", "star"]) {
-    for (const chunk of window.PFWire.encode({ ...body, via })) rawPost(chunk, via);
   }
 }
 
@@ -167,7 +129,6 @@ export function start() {
             return;
           }
           say("in.raw", raw.length + "ch — head: " + codes(raw, 44));
-          if (raw.slice(0, RAW_PROBE.length) === RAW_PROBE) { rawEcho(raw); return; }
           read(raw);
         },
         // Without this callback a refused registration is silent, and a finder

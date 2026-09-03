@@ -32,7 +32,6 @@
     <button id="btnOpen" class="primary">Open PDF</button>
     <button id="btnPull" title="Read the cells in scope again">Re-read cells</button>
     <button id="btnClear" title="Release every tick" disabled>Clear ticks</button>
-    <button id="btnDebug" title="Show the bridge log for this window (Ctrl+Alt+D)">Debug</button>
     <input type="file" id="filePdf" accept="application/pdf" hidden>
   </div>
 
@@ -58,20 +57,8 @@
   <div class="toast" id="toast" hidden></div>
 </main>
 
-<section class="dbg" id="dbg" hidden>
-  <div class="dbgTools">
-    <button id="dbgTest" class="primary">Test bridge</button>
-    <button id="dbgCopy">Copy report</button>
-    <button id="dbgSend" title="Push this window’s log across to the Excel pane">Send to Excel</button>
-    <button id="dbgClear">Clear</button>
-    <span id="dbgNote"></span>
-  </div>
-  <textarea id="dbgLog" readonly spellcheck="false"></textarea>
-</section>
-
 <div class="bar" id="bar" hidden><i id="barFill"></i></div>
 
 <script type="module" src="pdffinder/finder.js"></script>
-<script type="module" src="pdffinder/debugpanel.js"></script>
 </body>
 </html>

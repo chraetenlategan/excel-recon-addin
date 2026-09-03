@@ -74,8 +74,7 @@ page; `pfPaint` diffs against what it last painted.
 | `pdffinder/store.js` | Ticks and marker colour in `localStorage`, per PDF + scope. |
 | `pdffinder/bridge.js` | The dialog's end of the Office channel. |
 | `pdffinder/wire.js` | The chunking codec both ends speak — loaded by both. |
-| `pdffinder/debug.js` | The black box recorder both ends keep — loaded by both, first. |
-| `pdffinder/debugpanel.js` | The finder window's **Debug** drawer. |
+| `pdffinder/debug.js` | The black box recorder both ends keep — loaded by both, first. No UI: read it from the console with `PFDebug.report()`. |
 
 Office gives a dialog one string-sized wire in each direction, so every message
 is chunked by `wire.js` and reassembled on the other side. Both inbound handlers
@@ -123,44 +122,16 @@ nothing on either screen to say **which** direction stopped. A pane that never
 answers and a window that never asks look identical from the page: a
 double-click sits on *Looking for 5 400,00 in Excel…* for ever.
 
-So each end keeps its own log, from its first line of script, and each can print
-that log without the other's help — the one channel that would carry a joint
-report is the thing under suspicion.
-
-**Where to find it.** In the pane, under **Bridge diagnostics** on the PDF
-finder tab. In the window, the **Debug** button (or Ctrl+Alt+D). Both hold a
-textarea that can simply be selected and copied where the clipboard API is
-locked down inside a dialog.
-
-**How to read it.** Press **Test bridge** in the pane. The same `ping` goes down
-all three forms of `messageChild` Office offers, each labelled; `bridge.js`
-answers every ping it receives three times over, once down each form of
-`messageParent`, labelled the same way. Four seconds later:
-
-| What the two logs show | What is broken |
-| --- | --- |
-| Pane logs `test.ping`, window's log has no `in.ping` | **pane → window**. Look at `dialog.opened` (cross-origin?) and `in.handler` in the window. |
-| Window logs `in.ping`, pane logs no `test.pong` | **window → pane**. This is the failure that leaves a double-click hanging. |
-| Some labels come back, others do not | The channel works in one form only — make `pfPost` / `rawPost` prefer that one. |
-| Both, in a few ms | The bridge is fine; the fault is in what the message asked for — read the `excel.*` lines. |
+So each end keeps its own log, from its first line of script, in `debug.js`.
+Neither end shows it on screen — there is no diagnostics drawer and no bridge
+test any more — so read it from that window's console:
+`PFDebug.report()` in the pane, and the same in the finder window.
 
 Tag names are a dotted path so a log can be read down its left column:
 `dialog.*` opening the window, `out.*` / `in.*` chunks each way, `wire.*` the
 codec (`wire.notString` is the classic — a handler's event object fed to the
 reader instead of the string on `.message`), `excel.*` what the pane did to the
-workbook, `test.*` the bridge test, `window.error` anything that threw where
-nobody was catching.
-
-**Fetch window log** (pane) and **Send to Excel** (window) put both logs in one
-report — but only where the return leg works at all, which is exactly the case
-where it is least needed. When it does not, copy each end separately.
-
-**Raw echo** sends one plain string with no codec around it at all — a tab, a
-space, a non-breaking space, an em dash and an accent — and the window echoes
-back both its own reading of it and the string itself. If the channel alters a
-string, every codec built on tabs is doomed and no amount of reading `wire.*`
-lines will say so; this is the one test that does not rest on the thing being
-tested.
+workbook, `window.error` anything that threw where nobody was catching.
 
 Every file of the bridge registers its build (`PFDebug.file`), and the report
 prints them on its second line. The window also puts its build in `ready`, and

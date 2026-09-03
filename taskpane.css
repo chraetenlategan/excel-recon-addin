@@ -86,28 +86,7 @@ button.icon:hover { background: #f3f2f1; }
 .status.err { color: #a4262c; }
 .hidden { display: none; }
 
-/* one side of the comparison */
-.side {
-  border: 1px solid var(--line);
-  border-radius: 3px;
-  padding: 10px 10px 4px;
-}
-.side h3 { margin: 0 0 8px; font-size: 12px; font-weight: 600; color: var(--accent-dark); }
-.side .hint { font-weight: 400; color: var(--muted); font-size: 11px; }
-.side .range { margin: 0 0 8px; font-size: 11px; color: var(--muted); min-height: 14px; }
-.side .range.err { color: #a4262c; }
-
-/* "Use selected cells" — fills a side in from whatever is highlighted in Excel */
-button.use-sel {
-  width: 100%; margin: 0 0 8px; padding: 5px;
-  font: inherit; font-size: 12px; font-weight: 600;
-  color: var(--accent-dark); background: #f3f9f5;
-  border: 1px solid var(--line); border-radius: 3px; cursor: pointer;
-}
-button.use-sel:hover:not(:disabled) { background: #e8f3ec; }
-button.use-sel:disabled { color: #c8c6c4; cursor: not-allowed; }
-
-/* tabs — colour recon on one, the column compare on the other */
+/* tabs — ColourCode on one, the PDF finder on the other */
 header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 
 .tabs { display: flex; border-bottom: 1px solid var(--line); }
@@ -174,20 +153,3 @@ button.link.add:hover:not(:disabled) { text-decoration: underline; }
 /* The whole tab is three fields and a button: which cells the finder should
    look for. Everything else about the finder lives in its own window. */
 #tab-pdf .hint { font-weight: 400; color: var(--muted); font-size: 11px; }
-
-/* the PDF-finder bridge log — shut, and out of the way, until something breaks */
-.dbg { margin: 14px 0 0; font-size: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
-.dbg summary { color: var(--muted); cursor: pointer; }
-.dbg summary:hover { color: var(--fg); }
-.dbg .hint { display: block; margin: 6px 0; font-size: 11px; color: var(--muted); font-weight: 400; }
-.dbg-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
-.dbg-tools button {
-  font: inherit; font-size: 11px; padding: 4px 9px; border: 1px solid var(--line);
-  border-radius: 2px; background: #fff; color: var(--fg); cursor: pointer; width: auto;
-}
-.dbg-tools button:hover { border-color: var(--accent); color: var(--accent); }
-#pf-dbg-log {
-  width: 100%; height: 220px; resize: vertical; padding: 6px 8px;
-  border: 1px solid var(--line); border-radius: 2px; background: #fff; color: var(--fg);
-  font: 10px/1.45 Consolas, "Courier New", monospace; white-space: pre; overflow: auto;
-}

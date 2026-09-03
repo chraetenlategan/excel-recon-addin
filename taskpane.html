@@ -15,16 +15,13 @@
   </header>
 
   <nav class="tabs" role="tablist">
-    <button class="tab active" data-tab="colour" role="tab">Colour recon</button>
-    <button class="tab" data-tab="columns" role="tab">Columns</button>
+    <button class="tab active" data-tab="colour" role="tab">ColourCode</button>
     <button class="tab" data-tab="pdf" role="tab">PDF finder</button>
   </nav>
 
   <main>
-    <!-- ---------- colour recon ---------- -->
+    <!-- ---------- ColourCode ---------- -->
     <div class="panel" id="tab-colour">
-      <p class="hint block">Colour the cells you want checked, then add one rule per colour. Matched cells go green, unmatched go red.</p>
-
       <div id="cr-rules"></div>
 
       <button id="cr-add" class="link add">+ Add another colour rule</button>
@@ -36,42 +33,6 @@
 
       <button id="cr-run" class="primary">Recon colours</button>
     </div>
-
-    <!-- ---------- column compare ---------- -->
-    <div class="panel hidden" id="tab-columns">
-      <section class="side" id="side-a">
-        <h3>Side A</h3>
-        <label>Sheet
-          <select data-k="sheet"></select>
-        </label>
-        <label>Column(s) <span class="hint">ctrl-click for several — a value counts as found if it's in any of them</span>
-          <select data-k="column" multiple size="4"></select>
-        </label>
-        <label>Limit to range <span class="hint">optional — e.g. B12:B25, or 12:25, or F12:F25, H12:H25</span>
-          <input type="text" data-k="limit" placeholder="whole column" />
-        </label>
-        <button class="use-sel" data-k="use-selection">Use selected cells</button>
-        <p class="range" data-k="preview"></p>
-      </section>
-
-      <section class="side" id="side-b">
-        <h3>Side B</h3>
-        <label>Sheet
-          <select data-k="sheet"></select>
-        </label>
-        <label>Column(s) <span class="hint">ctrl-click for several — a value counts as found if it's in any of them</span>
-          <select data-k="column" multiple size="4"></select>
-        </label>
-        <label>Limit to range <span class="hint">optional — e.g. B12:B25, or 12:25, or F12:F25, H12:H25</span>
-          <input type="text" data-k="limit" placeholder="whole column" />
-        </label>
-        <button class="use-sel" data-k="use-selection">Use selected cells</button>
-        <p class="range" data-k="preview"></p>
-      </section>
-
-      <button id="compare" class="primary">Compare</button>
-    </div>
-
 
     <!-- ---------- pdf finder ---------- -->
     <div class="panel hidden" id="tab-pdf">
@@ -89,22 +50,9 @@
 
       <button id="pf-open" class="primary">Open PDF finder</button>
       <p id="pf-status" class="status"></p>
-
-      <details class="dbg" id="pf-dbg">
-        <summary>Bridge diagnostics</summary>
-        <p class="hint">Open the finder, press <b>Test bridge</b>, then copy the report.</p>
-        <div class="dbg-tools">
-          <button id="pf-dbg-test">Test bridge</button>
-          <button id="pf-dbg-raw" title="Send one plain string with no codec around it">Raw echo</button>
-          <button id="pf-dbg-pull" title="Ask the finder window for its own log">Fetch window log</button>
-          <button id="pf-dbg-copy">Copy report</button>
-          <button id="pf-dbg-clear">Clear</button>
-        </div>
-        <textarea id="pf-dbg-log" readonly spellcheck="false"></textarea>
-      </details>
     </div>
 
-    <!-- ---------- matching rules, shared by the two compare tabs ---------- -->
+    <!-- ---------- matching rules, used by ColourCode ---------- -->
     <section class="opts" id="opts">
       <label class="check"><input type="checkbox" id="ignore-sign" checked /> Ignore + / − (treat −100 as 100)</label>
       <label class="check"><input type="checkbox" id="ignore-case" checked /> Ignore case &amp; spacing on text</label>

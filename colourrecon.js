@@ -1,9 +1,8 @@
 "use strict";
 
 /**
- * colourrecon.js — "Colour recon": the same comparison as the Columns tab, but
- * the user says which cells to read by colouring them in Excel instead of
- * naming ranges.
+ * colourrecon.js — "ColourCode": the user says which cells to reconcile by
+ * colouring them in Excel, rather than by naming ranges.
  *
  * The pane shows one line per colour, reading the way it is said out loud:
  *
@@ -212,7 +211,7 @@ async function crPickColour(rule, side, sheetSel, swatch, btn) {
 /**
  * Walk `sheet`'s used range once and hand back one group per colour asked for:
  * { hex, sheet, parts, values, rows, cellGroups }. `parts` is the same
- * { column, firstRow, lastRow } shape the Columns tab uses — runs of
+ * { column, firstRow, lastRow } shape paintSide() reads — runs of
  * consecutive coloured cells in one column — so paintSide() and "Clear colours"
  * work on it unchanged, while `values` and `rows` line up cell by cell in that
  * same order. `cellGroups` cuts the same cells the other way: side-by-side runs
@@ -577,7 +576,7 @@ async function reconColours() {
     return;
   }
   if (!supports("1.9")) {
-    setStatus("Colour recon needs a newer Excel (ExcelApi 1.9). Use the Columns tab instead.", true);
+    setStatus("ColourCode needs a newer Excel (ExcelApi 1.9).", true);
     return;
   }
   const opts = readOpts();
